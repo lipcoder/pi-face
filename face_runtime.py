@@ -8,44 +8,46 @@ import csv
 from datetime import datetime
 
 import cv2
-import numpy as np
 import inspireface as isf
 
-# ================== 配置区域 ==================
+# ================== 路径 & 配置（迁移时主要改这里） ==================
 
-# 摄像头 / 视频流来源：改为本地 5000 端口
+# 当前脚本所在目录
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# 项目 data 目录（默认为 ../data）
+DATA_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "data"))
+
+# 视频流来源（默认本地 5000 端口）
 VIDEO_SOURCE = os.environ.get("VIDEO_SOURCE", "http://127.0.0.1:5000/video_feed")
 
-# 已知人脸目录
-KNOW_FACE_DIR = "./data/know"
-os.makedirs(KNOW_FACE_DIR, exist_ok=True)
+# 未知人脸保存目录
+FACE_SAVE_DIR = os.path.join(DATA_DIR, "unknow")
 
-# 未知（抓拍）人脸保存目录
-FACE_SAVE_DIR = "./data/unknow"
-os.makedirs(FACE_SAVE_DIR, exist_ok=True)
-
-# 特征数据库
-FEATURE_DB_DIR = "./data/feature_db"
-FEATURE_DB_PATH = os.path.join(FEATURE_DB_DIR, "feature_hub.db")    
+# 特征数据库目录与文件（与建库脚本保持完全一致）
+FEATURE_DB_DIR = os.path.join(DATA_DIR, "feature_db")
+FEATURE_DB_PATH = os.path.join(FEATURE_DB_DIR, "feature_hub.db")
 LABEL_MAP_PATH = os.path.join(FEATURE_DB_DIR, "label_map.json")
-os.makedirs(FEATURE_DB_DIR, exist_ok=True)
 
-# 日志 CSV（按你给的格式写）
-LOG_DIR = "./data/logs"
-os.makedirs(LOG_DIR, exist_ok=True)
+# 日志目录 & 文件
+LOG_DIR = os.path.join(DATA_DIR, "logs")
 RECORDS_CSV_PATH = os.path.join(LOG_DIR, "records.csv")
 
-# 识别阈值
+os.makedirs(FACE_SAVE_DIR, exist_ok=True)
+os.makedirs(FEATURE_DB_DIR, exist_ok=True)
+os.makedirs(LOG_DIR, exist_ok=True)
+
+# 识别阈值（要与建库脚本一致）
 SEARCH_THRESHOLD = 0.48
 
 # 是否显示调试窗口
 SHOW_WINDOW = False
 
-# 全局：face_id -> label 的映射
+# 全局：face_id -> label
 KNOWN_LABEL_MAP = {}
 
 
-# ================== 工具函数：label map ==================
+# ================== label_map 工具函数 ==================
 
 def load_label_map():
     global KNOWN_LABEL_MAP
@@ -55,35 +57,27 @@ def load_label_map():
                 KNOWN_LABEL_MAP = json.load(f)
             print(f"[INFO] 已加载 label_map: {len(KNOWN_LABEL_MAP)} 条")
         except Exception as e:
-            print("[WARN] 读取 label_map 失败，将重新构建：", e)
+            print("[WARN] 读取 label_map 失败：", e)
             KNOWN_LABEL_MAP = {}
     else:
         KNOWN_LABEL_MAP = {}
+        print("[WARN] 未找到 label_map.json，将只输出 id，不输出名字。")
 
 
-def save_label_map():
-    try:
-        with open(LABEL_MAP_PATH, "w", encoding="utf-8") as f:
-            json.dump(KNOWN_LABEL_MAP, f, ensure_ascii=False, indent=2)
-        print(f"[INFO] 已保存 label_map: {len(KNOWN_LABEL_MAP)} 条 -> {LABEL_MAP_PATH}")
-    except Exception as e:
-        print("[WARN] 保存 label_map 失败：", e)
-
-
-# ================== 初始化 InspireFace ==================
+# ================== InspireFace 初始化（只加载已有特征） ==================
 
 def init_inspireface():
     """
-    初始化 InspireFace 会话 + FeatureHub + 预载 /data/know 已知人脸
+    初始化 InspireFace 会话 + FeatureHub。
+    不再从 know 目录建库，只使用已有数据库和 label_map。
     """
     try:
         isf.reload("Pikachu")
     except Exception as e:
-        print("[WARN] reload Pikachu 失败，可能你已经在 C++ 侧配置好模型了：", e)
+        print("[WARN] reload Pikachu 失败：", e)
 
     opt = isf.HF_ENABLE_FACE_RECOGNITION
 
-    # 使用位置参数，不要用 opt=opt
     session = isf.InspireFaceSession(
         opt,
         isf.HF_DETECT_MODE_ALWAYS_DETECT,
@@ -91,7 +85,6 @@ def init_inspireface():
 
     session.set_detection_confidence_threshold(0.5)
 
-    # 启用 FeatureHub（sqlite）
     feature_hub_cfg = isf.FeatureHubConfiguration(
         primary_key_mode=isf.HF_PK_AUTO_INCREMENT,
         enable_persistence=True,
@@ -105,84 +98,9 @@ def init_inspireface():
     print("[INFO] InspireFace 初始化完成，特征库：", FEATURE_DB_PATH)
     print("[INFO] 当前库中已有的人脸数：", isf.feature_hub_get_face_count())
 
-    # 先加载已有 label_map
     load_label_map()
 
-    # 如果没有 label_map，则从 /data/know 生成一遍
-    if not KNOWN_LABEL_MAP:
-        build_known_faces_from_dir(session)
-
     return session
-
-
-# ================== 已知人脸建库 ==================
-
-def is_image_file(path: str) -> bool:
-    ext = os.path.splitext(path)[1].lower()
-    return ext in [".jpg", ".jpeg", ".png", ".bmp", ".webp"]
-
-
-def build_known_faces_from_dir(session):
-    """
-    从 /data/know 目录读取图片，建立已知人脸特征并写入 FeatureHub。
-    规则：文件名（不含后缀）作为 label，例如：/data/know/zhangsan.jpg -> "zhangsan"
-    """
-    global KNOWN_LABEL_MAP
-
-    if not os.path.isdir(KNOW_FACE_DIR):
-        print(f"[WARN] 已知人脸目录不存在：{KNOW_FACE_DIR}")
-        return
-
-    files = sorted(os.listdir(KNOW_FACE_DIR))
-    if not files:
-        print(f"[WARN] 已知人脸目录为空：{KNOW_FACE_DIR}")
-        return
-
-    inserted = 0
-
-    for fname in files:
-        path = os.path.join(KNOW_FACE_DIR, fname)
-        if not os.path.isfile(path) or not is_image_file(path):
-            continue
-
-        label = os.path.splitext(fname)[0]
-
-        # 已经有同名 label 的就跳过（防止重复插入）
-        if label in KNOWN_LABEL_MAP.values():
-            print(f"[INFO] 跳过已存在 label: {label}")
-            continue
-
-        img = cv2.imread(path)
-        if img is None:
-            print(f"[WARN] 无法读取图片：{path}")
-            continue
-
-        faces = session.face_detection(img)
-        if not faces:
-            print(f"[WARN] 未检测到人脸：{path}")
-            continue
-
-        face = faces[0]
-
-        feature = session.face_feature_extract(img, face)
-        if feature is None or feature.size == 0:
-            print(f"[WARN] 未能提取特征：{path}")
-            continue
-
-        identity = isf.FaceIdentity(feature, -1)
-        ret, face_id = isf.feature_hub_face_insert(identity)
-        if not ret:
-            print(f"[WARN] 插入 FeatureHub 失败：{path}")
-            continue
-
-        KNOWN_LABEL_MAP[str(face_id)] = label
-        inserted += 1
-        print(f"[INFO] 已加入已知人脸: face_id={face_id}, label={label}, file={fname}")
-
-    if inserted > 0:
-        save_label_map()
-
-    print(f"[INFO] 已知人脸建库完成，本次新增 {inserted} 条，总数 {len(KNOWN_LABEL_MAP)}")
 
 
 # ================== 工具函数 ==================
@@ -207,7 +125,7 @@ def crop_face_from_frame(frame, face):
 
 def save_face_image(face_img):
     """
-    把截取的人脸图保存到 /data/unknow 下
+    把截取的人脸图保存到 FACE_SAVE_DIR 下
     返回保存路径
     """
     ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
@@ -232,7 +150,6 @@ def recognize_face(session, frame, face):
     if result is None:
         return False, 0.0, -1, None
 
-    # 1.2.3 返回 SearchResult 对象
     confidence = getattr(result, "confidence", 0.0)
     identity_id = getattr(result, "face_id", None)
     if identity_id is None:
@@ -248,23 +165,32 @@ def recognize_face(session, frame, face):
 
 def log_to_csv(timestamp, image_path, label, confidence, status):
     """
-    写成你指定的格式：
-    2025-11-14 20:17:50,/data/unknow/z6.jpg,zheng,0.651121,0.480000,MATCH,
+    严格按格式写入：
+    2025-11-22 10:03:48,/data/unknow/20251122_100348_139706.jpg,xue,0.721357,0.480000,MATCH,
     """
+
+    # 如果你需要绝对路径前缀固定为 /data，可以在这里进行替换/拼接：
+    # 例如：
+    #   abs_path = os.path.abspath(image_path)
+    #   # 或强制替换为 /data/unknow 前缀（按你实际部署来改）
+    #   log_path = abs_path
+    # 这里先直接使用传入的 image_path（通常是相对 DATA_DIR 的路径）
+    log_path = image_path
+
     with open(RECORDS_CSV_PATH, "a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow([
-            timestamp,
-            image_path,
-            label or "",
-            f"{confidence:.6f}",
-            f"{SEARCH_THRESHOLD:.6f}",
-            status,
-            "",  # 最后预留一个空字段，对应末尾那个逗号
+            timestamp,                      # 2025-11-22 10:03:48
+            log_path,                       # /data/unknow/xxx.jpg 或其他路径
+            label or "",                    # xue
+            f"{confidence:.6f}",            # 0.721357
+            f"{SEARCH_THRESHOLD:.6f}",      # 0.480000
+            status,                         # MATCH / UNKNOWN
+            "",                             # 最后一个空字段，对应末尾那个逗号
         ])
 
 
-# ================== 主循环：从 5000 端口拉流 + 截脸再识别 ==================
+# ================== 主循环：拉流 + 识别 ==================
 
 def main():
     session = init_inspireface()
@@ -310,7 +236,7 @@ def main():
                     status = "UNKNOWN"
                     print(f"[{ts}] UNKNOWN id={identity_id} conf={conf:.3f} img={face_path}")
 
-                # 写入 CSV（按你指定的顺序）
+                # 写入 CSV 日志
                 log_to_csv(
                     timestamp=ts,
                     image_path=face_path,
