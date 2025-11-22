@@ -4,6 +4,7 @@
 import os
 import time
 import json
+import csv
 from datetime import datetime
 
 import cv2
@@ -16,18 +17,23 @@ import inspireface as isf
 VIDEO_SOURCE = os.environ.get("VIDEO_SOURCE", "http://127.0.0.1:5000/video_feed")
 
 # 已知人脸目录
-KNOW_FACE_DIR = "/data/know"
+KNOW_FACE_DIR = "./data/know"
 os.makedirs(KNOW_FACE_DIR, exist_ok=True)
 
 # 未知（抓拍）人脸保存目录
-FACE_SAVE_DIR = "/data/unknow"
+FACE_SAVE_DIR = "./data/unknow"
 os.makedirs(FACE_SAVE_DIR, exist_ok=True)
 
 # 特征数据库
-FEATURE_DB_DIR = "/data/feature_db"
-FEATURE_DB_PATH = os.path.join(FEATURE_DB_DIR, "feature_hub.db")
+FEATURE_DB_DIR = "./data/feature_db"
+FEATURE_DB_PATH = os.path.join(FEATURE_DB_DIR, "feature_hub.db")    
 LABEL_MAP_PATH = os.path.join(FEATURE_DB_DIR, "label_map.json")
 os.makedirs(FEATURE_DB_DIR, exist_ok=True)
+
+# 日志 CSV（按你给的格式写）
+LOG_DIR = "./data/logs"
+os.makedirs(LOG_DIR, exist_ok=True)
+RECORDS_CSV_PATH = os.path.join(LOG_DIR, "records.csv")
 
 # 识别阈值
 SEARCH_THRESHOLD = 0.48
@@ -77,7 +83,7 @@ def init_inspireface():
 
     opt = isf.HF_ENABLE_FACE_RECOGNITION
 
-    # 注意：使用位置参数，不要用 opt=opt
+    # 使用位置参数，不要用 opt=opt
     session = isf.InspireFaceSession(
         opt,
         isf.HF_DETECT_MODE_ALWAYS_DETECT,
@@ -163,9 +169,7 @@ def build_known_faces_from_dir(session):
             print(f"[WARN] 未能提取特征：{path}")
             continue
 
-        # 构造 FaceIdentity，这里第二个参数给个占位 id（在 AUTO_INCREMENT 模式下实际主键由 DB 分配）
         identity = isf.FaceIdentity(feature, -1)
-
         ret, face_id = isf.feature_hub_face_insert(identity)
         if not ret:
             print(f"[WARN] 插入 FeatureHub 失败：{path}")
@@ -212,6 +216,7 @@ def save_face_image(face_img):
     cv2.imwrite(save_path, face_img)
     return save_path
 
+
 def recognize_face(session, frame, face):
     """
     对单张人脸进行识别：
@@ -227,25 +232,36 @@ def recognize_face(session, frame, face):
     if result is None:
         return False, 0.0, -1, None
 
-    # 正确的用法：SearchResult 对象
-    # confidence 在 result.confidence
-    # id 在 result.similar_identity.id
+    # 1.2.3 返回 SearchResult 对象
     confidence = getattr(result, "confidence", 0.0)
-
-    similar_identity = getattr(result, "similar_identity", None)
-    if similar_identity is not None:
-        identity_id = getattr(similar_identity, "id", -1)
-    else:
-        identity_id = -1
+    identity_id = getattr(result, "face_id", None)
+    if identity_id is None:
+        identity_id = getattr(result, "identity_id", -1)
 
     is_match = confidence >= SEARCH_THRESHOLD
 
-    # 从 label_map.json 里取名字
     label = KNOWN_LABEL_MAP.get(str(identity_id))
-
     return is_match, float(confidence), int(identity_id), label
 
 
+# ================== 记录到 CSV ==================
+
+def log_to_csv(timestamp, image_path, label, confidence, status):
+    """
+    写成你指定的格式：
+    2025-11-14 20:17:50,/data/unknow/z6.jpg,zheng,0.651121,0.480000,MATCH,
+    """
+    with open(RECORDS_CSV_PATH, "a", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            timestamp,
+            image_path,
+            label or "",
+            f"{confidence:.6f}",
+            f"{SEARCH_THRESHOLD:.6f}",
+            status,
+            "",  # 最后预留一个空字段，对应末尾那个逗号
+        ])
 
 
 # ================== 主循环：从 5000 端口拉流 + 截脸再识别 ==================
@@ -268,7 +284,6 @@ def main():
                 time.sleep(0.1)
                 continue
 
-            # 1. 人脸检测（在整帧上做）
             faces = session.face_detection(frame)
             if not faces:
                 if SHOW_WINDOW:
@@ -278,22 +293,31 @@ def main():
                 continue
 
             for face in faces:
-                # 2. 截取人脸子图
                 face_img = crop_face_from_frame(frame, face)
                 if face_img is None:
                     continue
 
                 face_path = save_face_image(face_img)
 
-                # 3. 识别
                 is_match, conf, identity_id, label = recognize_face(session, frame, face)
 
                 ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 if is_match:
+                    status = "MATCH"
                     name_part = label if label else f"id={identity_id}"
                     print(f"[{ts}] MATCH {name_part} id={identity_id} conf={conf:.3f} img={face_path}")
                 else:
+                    status = "UNKNOWN"
                     print(f"[{ts}] UNKNOWN id={identity_id} conf={conf:.3f} img={face_path}")
+
+                # 写入 CSV（按你指定的顺序）
+                log_to_csv(
+                    timestamp=ts,
+                    image_path=face_path,
+                    label=label,
+                    confidence=conf,
+                    status=status,
+                )
 
                 if SHOW_WINDOW:
                     x1, y1, x2, y2 = map(int, face.location)
