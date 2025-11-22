@@ -21,10 +21,10 @@ DATA_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "data"))
 # 视频流来源（默认本地 5000 端口）
 VIDEO_SOURCE = os.environ.get("VIDEO_SOURCE", "http://127.0.0.1:5000/video_feed")
 
-# 未知人脸保存目录
+# 未知人脸实际保存目录（物理路径）
 FACE_SAVE_DIR = os.path.join(DATA_DIR, "unknow")
 
-# 特征数据库目录与文件（与建库脚本保持完全一致）
+# 特征数据库目录与文件（与 build_feature_db.py 保持完全一致）
 FEATURE_DB_DIR = os.path.join(DATA_DIR, "feature_db")
 FEATURE_DB_PATH = os.path.join(FEATURE_DB_DIR, "feature_hub.db")
 LABEL_MAP_PATH = os.path.join(FEATURE_DB_DIR, "label_map.json")
@@ -126,7 +126,7 @@ def crop_face_from_frame(frame, face):
 def save_face_image(face_img):
     """
     把截取的人脸图保存到 FACE_SAVE_DIR 下
-    返回保存路径
+    返回保存路径（物理路径）
     """
     ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     filename = f"{ts}.jpg"
@@ -150,15 +150,23 @@ def recognize_face(session, frame, face):
     if result is None:
         return False, 0.0, -1, None
 
-    confidence = getattr(result, "confidence", 0.0)
-    identity_id = getattr(result, "face_id", None)
-    if identity_id is None:
-        identity_id = getattr(result, "identity_id", -1)
+    # ======= 关键修正点：从 similar_identity.id 拿 ID，而不是乱猜字段名 =======
+    # 官方文档示例：
+    # search_result = isf.feature_hub_face_search(query_feature)
+    # if search_result.similar_identity.id != -1:
+    #     print(search_result.similar_identity.id, search_result.confidence)
+    # ============================================================
+    if result.similar_identity is None or result.similar_identity.id == -1:
+        return False, float(result.confidence), -1, None
+
+    confidence = float(result.confidence)
+    identity_id = int(result.similar_identity.id)
 
     is_match = confidence >= SEARCH_THRESHOLD
 
     label = KNOWN_LABEL_MAP.get(str(identity_id))
-    return is_match, float(confidence), int(identity_id), label
+
+    return is_match, confidence, identity_id, label
 
 
 # ================== 记录到 CSV ==================
@@ -169,20 +177,20 @@ def log_to_csv(timestamp, image_path, label, confidence, status):
     2025-11-22 10:03:48,/data/unknow/20251122_100348_139706.jpg,xue,0.721357,0.480000,MATCH,
     """
 
-    # 如果你需要绝对路径前缀固定为 /data，可以在这里进行替换/拼接：
-    # 例如：
-    #   abs_path = os.path.abspath(image_path)
-    #   # 或强制替换为 /data/unknow 前缀（按你实际部署来改）
-    #   log_path = abs_path
-    # 这里先直接使用传入的 image_path（通常是相对 DATA_DIR 的路径）
-    log_path = image_path
+    # image_path 是物理路径，我们只在日志里写统一的逻辑路径 /data/unknow/xxx.jpg
+    filename = os.path.basename(image_path)
+    log_path = f"/data/unknow/{filename}"
+
+    # label 要的是「名字」，找不到就留空（你说不想要 id）
+    if not label:
+        label = ""
 
     with open(RECORDS_CSV_PATH, "a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow([
             timestamp,                      # 2025-11-22 10:03:48
-            log_path,                       # /data/unknow/xxx.jpg 或其他路径
-            label or "",                    # xue
+            log_path,                       # /data/unknow/xxx.jpg
+            label,                          # xue
             f"{confidence:.6f}",            # 0.721357
             f"{SEARCH_THRESHOLD:.6f}",      # 0.480000
             status,                         # MATCH / UNKNOWN
@@ -230,13 +238,14 @@ def main():
                 ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 if is_match:
                     status = "MATCH"
+                    # 终端打印里可以带上 id，方便你调试；日志里只写名字
                     name_part = label if label else f"id={identity_id}"
                     print(f"[{ts}] MATCH {name_part} id={identity_id} conf={conf:.3f} img={face_path}")
                 else:
                     status = "UNKNOWN"
                     print(f"[{ts}] UNKNOWN id={identity_id} conf={conf:.3f} img={face_path}")
 
-                # 写入 CSV 日志
+                # 写入 CSV 日志（这里第三列就是名字）
                 log_to_csv(
                     timestamp=ts,
                     image_path=face_path,

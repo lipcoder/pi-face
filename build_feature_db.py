@@ -15,7 +15,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 # 项目 data 目录（默认为 ../data）
 DATA_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "data"))
 
-# 已知人脸目录（注意：你说的是 ../data/konw，这里按惯例写成 know，自行按需改名）
+# 已知人脸目录（如果你目录真叫 konw，就把 "know" 改成 "konw"）
 KNOW_FACE_DIR = os.path.join(DATA_DIR, "know")
 
 # 特征数据库目录与文件
@@ -26,7 +26,7 @@ LABEL_MAP_PATH = os.path.join(FEATURE_DB_DIR, "label_map.json")
 os.makedirs(KNOW_FACE_DIR, exist_ok=True)
 os.makedirs(FEATURE_DB_DIR, exist_ok=True)
 
-# 识别阈值（与运行时脚本保持一致）
+# 识别阈值（与运行脚本保持一致）
 SEARCH_THRESHOLD = 0.48
 
 # 全局：face_id -> label
@@ -60,6 +60,21 @@ def save_label_map():
 
 # ================== InspireFace 初始化 ==================
 
+def enable_feature_hub():
+    """启用一个基于 FEATURE_DB_PATH 的 FeatureHub"""
+    feature_hub_cfg = isf.FeatureHubConfiguration(
+        primary_key_mode=isf.HF_PK_AUTO_INCREMENT,
+        enable_persistence=True,
+        persistence_db_path=FEATURE_DB_PATH,
+        search_threshold=SEARCH_THRESHOLD,
+        search_mode=isf.HF_SEARCH_MODE_EAGER,
+    )
+    ret = isf.feature_hub_enable(feature_hub_cfg)
+    assert ret, "Failed to enable FeatureHub"
+    print("[INFO] InspireFace FeatureHub 已启用，特征库：", FEATURE_DB_PATH)
+    print("[INFO] 当前库中已有的人脸数：", isf.feature_hub_get_face_count())
+
+
 def init_inspireface():
     """初始化 InspireFace 会话 + FeatureHub（仅建库，不拉摄像头）"""
     try:
@@ -76,22 +91,50 @@ def init_inspireface():
 
     session.set_detection_confidence_threshold(0.5)
 
-    feature_hub_cfg = isf.FeatureHubConfiguration(
-        primary_key_mode=isf.HF_PK_AUTO_INCREMENT,
-        enable_persistence=True,
-        persistence_db_path=FEATURE_DB_PATH,
-        search_threshold=SEARCH_THRESHOLD,
-        search_mode=isf.HF_SEARCH_MODE_EAGER,
-    )
-    ret = isf.feature_hub_enable(feature_hub_cfg)
-    assert ret, "Failed to enable FeatureHub"
-
-    print("[INFO] InspireFace 初始化完成，特征库：", FEATURE_DB_PATH)
-    print("[INFO] 当前库中已有的人脸数：", isf.feature_hub_get_face_count())
-
-    load_label_map()
+    # 先启用一次 FeatureHub（可能是旧库，下面 reset 时会重建）
+    enable_feature_hub()
 
     return session
+
+
+def reset_feature_db():
+    """
+    重置特征库：
+    1. 关闭 FeatureHub
+    2. 删除旧的 feature_hub.db
+    3. 删除 label_map.json
+    4. 重新启用空库
+    """
+    global KNOWN_LABEL_MAP
+
+    print("[INFO] 重置特征库数据库文件...")
+
+    # 1) 关闭 FeatureHub（如果已开启）
+    try:
+        isf.feature_hub_disable()
+        print("[INFO] 已关闭原有 FeatureHub")
+    except AttributeError:
+        # 老版本可能没有这个函数，但你 1.2.3 有，就当保险
+        print("[WARN] 当前 inspireface 版本不支持 feature_hub_disable，忽略关闭步骤")
+
+    # 2) 删除旧数据库文件
+    if os.path.exists(FEATURE_DB_PATH):
+        os.remove(FEATURE_DB_PATH)
+        print(f"[INFO] 已删除旧的数据库文件: {FEATURE_DB_PATH}")
+    else:
+        print("[INFO] 未发现旧数据库文件，无需删除。")
+
+    # 3) 删除 label_map
+    KNOWN_LABEL_MAP = {}
+    if os.path.exists(LABEL_MAP_PATH):
+        os.remove(LABEL_MAP_PATH)
+        print(f"[INFO] 已删除旧的 label_map: {LABEL_MAP_PATH}")
+    else:
+        print("[INFO] 未发现旧的 label_map 文件，无需删除。")
+
+    # 4) 重新启用空库
+    enable_feature_hub()
+    print("[INFO] 重置完成，当前库中人脸数（应为 0）:", isf.feature_hub_get_face_count())
 
 
 # ================== 建库逻辑 ==================
@@ -119,19 +162,12 @@ def build_known_faces_from_dir(session):
 
     inserted = 0
 
-    # 已有的 label 集合（防止重复）
-    existing_labels = set(KNOWN_LABEL_MAP.values())
-
     for fname in files:
         path = os.path.join(KNOW_FACE_DIR, fname)
         if not os.path.isfile(path) or not is_image_file(path):
             continue
 
         label = os.path.splitext(fname)[0]
-
-        if label in existing_labels:
-            print(f"[INFO] 跳过已存在 label: {label}")
-            continue
 
         img = cv2.imread(path)
         if img is None:
@@ -157,12 +193,10 @@ def build_known_faces_from_dir(session):
             continue
 
         KNOWN_LABEL_MAP[str(face_id)] = label
-        existing_labels.add(label)
         inserted += 1
         print(f"[INFO] 已加入已知人脸: face_id={face_id}, label={label}, file={fname}")
 
-    if inserted > 0:
-        save_label_map()
+    save_label_map()
 
     print(f"[INFO] 已知人脸建库完成，本次新增 {inserted} 条，总数 {len(KNOWN_LABEL_MAP)}")
     print(f"[INFO] 当前库中人脸总数（FeatureHub）: {isf.feature_hub_get_face_count()}")
@@ -173,6 +207,10 @@ def main():
     print("[INFO] 特征库数据库：", FEATURE_DB_PATH)
 
     session = init_inspireface()
+
+    # 每次建库前重置旧库和旧的 label_map，防止 id 对不上
+    reset_feature_db()
+
     build_known_faces_from_dir(session)
 
     print("[INFO] 建库脚本执行完毕。")
