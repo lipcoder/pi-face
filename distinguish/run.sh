@@ -1,10 +1,7 @@
 
 docker run --rm -it \
   --name=face \
-  --device=/dev/video0 \
-  # --platform linux/arm64 \
-  --device=/dev/input/event5 \
-  --mount type=bind,source="$HOME/pro/face",target=/data \
+  --mount type=bind,source="$HOME/project/face/data",target=/data \
   --network host \
-  face:pi5 \
+  face:v3 \
   /bin/bash

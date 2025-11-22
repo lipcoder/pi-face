@@ -16,7 +16,7 @@
           人脸识别日志看板
         </h1>
         <p class="text-sm text-slate-400 mt-1">
-          基于 /data/logs 的识别记录，支持筛选、详情与图表分析
+          图表只统计 <code>status=MATCH</code> 的记录，并按“同一人一小时内”合并为一次有效签到
         </p>
       </div>
       <div class="flex items-center gap-3">
@@ -31,39 +31,81 @@
     <!-- 概览卡片 -->
     <section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       <div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
-        <div class="text-xs font-medium text-slate-400">总记录数</div>
+        <div class="text-xs font-medium text-slate-400">原始总记录数（含异常）</div>
         <div id="totalCount" class="mt-2 text-2xl font-semibold">-</div>
       </div>
-      <div class="rounded-2xl border border-emerald-500/30 bg-slate-900/70 p-4">
-        <div class="text-xs font-medium text-emerald-300">OK 记录</div>
-        <div id="okCount" class="mt-2 text-2xl font-semibold text-emerald-300">-</div>
+      <div class="rounded-2xl border border-emerald-500/40 bg-slate-900/70 p-4">
+        <div class="text-xs font-medium text-emerald-300">有效签到（status=MATCH，1 小时去重后）</div>
+        <div id="validCount" class="mt-2 text-2xl font-semibold text-emerald-300">-</div>
       </div>
       <div class="rounded-2xl border border-rose-500/40 bg-slate-900/70 p-4">
-        <div class="text-xs font-medium text-rose-300">ERROR 记录</div>
+        <div class="text-xs font-medium text-rose-300">ERROR 记录数</div>
         <div id="errorCount" class="mt-2 text-2xl font-semibold text-rose-300">-</div>
       </div>
       <div class="rounded-2xl border border-amber-500/40 bg-slate-900/70 p-4">
-        <div class="text-xs font-medium text-amber-300">NO_FACE 记录</div>
+        <div class="text-xs font-medium text-amber-300">NO_FACE 记录数</div>
         <div id="noFaceCount" class="mt-2 text-2xl font-semibold text-amber-300">-</div>
       </div>
     </section>
 
-    <!-- 图表 -->
+    <!-- 图表：某人某日来了几次 -->
+    <section class="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 md:p-5">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
+        <h2 class="text-sm font-medium text-slate-100">
+          某人某日来了几次（仅统计 MATCH + 一小时去重后的有效签到）
+        </h2>
+        <div class="flex items-center gap-2">
+          <label for="personSelect" class="text-xs text-slate-400">选择人员：</label>
+          <select
+            id="personSelect"
+            class="text-xs md:text-sm rounded-xl border border-slate-700 bg-slate-900/80 px-3 py-1.5 focus:border-sky-500/70 outline-none">
+            <option value="">全部人员（总次数）</option>
+          </select>
+        </div>
+      </div>
+      <div class="relative h-64 md:h-72">
+        <canvas id="personDailyChart"></canvas>
+      </div>
+      <p class="mt-2 text-[11px] text-slate-500">
+        不选人员时，表示统计每天总的有效签到次数；选中某个人之后，就只看该人每天来了几次。
+      </p>
+    </section>
+    <!-- 图表：某日有几个人来 -->
     <section class="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 md:p-5">
       <div class="flex items-center justify-between mb-3">
         <h2 class="text-sm font-medium text-slate-100">
-          相似度趋势（仅统计 status=OK 且数据合法）
+          某日有几个人来（每天有效访客人数，去重，仅统计 MATCH）
         </h2>
       </div>
       <div class="relative h-64 md:h-72">
-        <canvas id="similarityChart"></canvas>
+        <canvas id="dayPeopleChart"></canvas>
+      </div>
+    </section>
+
+    <!-- 图表：某月某人来的天数 -->
+    <section class="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 md:p-5">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
+        <h2 class="text-sm font-medium text-slate-100">
+          某月某人来的天数（去重天数，仅统计 MATCH）
+        </h2>
+        <div class="flex items-center gap-2">
+          <label for="monthSelect" class="text-xs text-slate-400">选择月份：</label>
+          <select
+            id="monthSelect"
+            class="text-xs md:text-sm rounded-xl border border-slate-700 bg-slate-900/80 px-3 py-1.5 focus:border-sky-500/70 outline-none">
+            <option value="">全部月份</option>
+          </select>
+        </div>
+      </div>
+      <div class="relative h-64 md:h-72">
+        <canvas id="monthPersonChart"></canvas>
       </div>
       <p class="mt-2 text-[11px] text-slate-500">
-        图表会自动过滤 ERROR / NO_FACE 以及数值异常的数据，只展示核心正常识别结果。
+        选择某个月后，横轴是人员，纵轴是这个月内来过的天数（同一天内多次有效签到只算 1 天）。
       </p>
     </section>
 
-    <!-- 列表 + 筛选 -->
+    <!-- 列表 + 筛选（原始记录） -->
     <section class="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 md:p-5">
       <!-- 筛选区 -->
       <div class="flex flex-col md:flex-row md:items-center gap-3 mb-4">
@@ -77,11 +119,11 @@
             <input
               id="searchInput"
               type="text"
-              placeholder="例如：张三 / ERROR / NO_FACE"
+              placeholder="例如：张三 / MATCH / ERROR / NO_FACE"
               class="w-full bg-transparent outline-none text-sm placeholder:text-slate-500" />
           </div>
         </div>
-        <div class="w-full md:w-52">
+        <div class="w-full md:w-56">
           <label class="block text-xs font-medium text-slate-400 mb-1">
             状态筛选
           </label>
@@ -89,7 +131,7 @@
             id="statusFilter"
             class="w-full text-sm rounded-xl border border-slate-700 bg-slate-900/80 px-3 py-2 focus:border-sky-500/70 outline-none">
             <option value="">全部状态</option>
-            <option value="OK">OK</option>
+            <option value="MATCH">MATCH（有效记录）</option>
             <option value="ERROR">ERROR</option>
             <option value="NO_FACE">NO_FACE</option>
           </select>
@@ -114,7 +156,6 @@
           <tbody id="tableBody" class="divide-y divide-slate-800"></tbody>
         </table>
       </div>
-
       <!-- 分页 -->
       <div
         class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mt-4 text-xs text-slate-400">
@@ -190,7 +231,7 @@
             <span
               id="detailImagePlaceholder"
               class="text-[11px] text-slate-500">
-              无图片路径或尚未配置静态访问
+              无图片路径或尚未配置访问
             </span>
           </div>
           <p
@@ -201,15 +242,19 @@
       </div>
     </div>
   </div>
-
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
   <script>
     let currentPage = 1
     const pageSize = 20
     let totalPages = 1
     let currentPageData = []
-    let similarityChart = null
+
+    let statsCache = null
+    let personDailyChart = null
+    let dayPeopleChart = null
+    let monthPersonChart = null
 
     // 防抖
     function debounce(fn, delay) {
@@ -220,117 +265,251 @@
       }
     }
 
+    // 状态徽章
     function renderStatusBadge(status) {
       const base =
         'inline-flex items-center px-2 py-[2px] rounded-full text-[11px] font-medium border'
-      switch (status) {
-        case 'OK':
-          return `<span class="${base} bg-emerald-500/10 text-emerald-300 border-emerald-500/40">OK</span>`
+      const s = (status ?? '').toString()
+      const upper = s.toUpperCase()
+
+      switch (upper) {
+        case 'MATCH':
+          return `<span class="${base} bg-emerald-500/10 text-emerald-300 border-emerald-500/40">MATCH</span>`
         case 'ERROR':
           return `<span class="${base} bg-rose-500/10 text-rose-300 border-rose-500/40">ERROR</span>`
         case 'NO_FACE':
           return `<span class="${base} bg-amber-500/10 text-amber-300 border-amber-500/40">NO_FACE</span>`
+        case '':
+          return `<span class="${base} bg-slate-500/10 text-slate-300 border-slate-500/40">空</span>`
         default:
-          return `<span class="${base} bg-slate-500/10 text-slate-300 border-slate-500/40">${status ||
-            '未知'}</span>`
+          return `<span class="${base} bg-slate-500/10 text-slate-300 border-slate-500/40">${s}</span>`
       }
     }
 
-    // 请求统计和图表数据（只看 OK 数据）
+    // 获取统计数据
     async function fetchStats() {
       try {
         const res = await fetch('/api/stats')
         const stats = await res.json()
+        statsCache = stats
 
         document.getElementById('totalCount').textContent = stats.total ?? 0
-        document.getElementById('okCount').textContent = stats.ok ?? 0
+        document.getElementById('validCount').textContent = stats.valid ?? 0
         document.getElementById('errorCount').textContent = stats.error ?? 0
         document.getElementById('noFaceCount').textContent = stats.no_face ?? 0
 
-        renderSimilarityChart(stats.ok_series || [])
+        initFiltersFromStats()
+        updatePersonDailyChart()
+        updateDayPeopleChart()
+        updateMonthPersonChart()
       } catch (e) {
         console.error('获取统计失败', e)
       }
     }
 
-    function renderSimilarityChart(points) {
-      const ctx = document.getElementById('similarityChart').getContext('2d')
+    // 根据统计结果初始化“人员”和“月份”下拉框
+    function initFiltersFromStats() {
+      if (!statsCache) return
 
-      const labels = points.map((p) => p.timestamp || '')
-      const similarities = points.map((p) => p.similarity || 0)
-      const thresholds = points.map((p) => p.threshold || 0)
+      const personSelect = document.getElementById('personSelect')
+      const monthSelect = document.getElementById('monthSelect')
 
-      if (similarityChart) {
-        similarityChart.destroy()
+      const personSet = new Set()
+      ;(statsCache.person_day || []).forEach((item) => {
+        if (item.person) personSet.add(item.person)
+      })
+
+      const monthSet = new Set()
+      ;(statsCache.month_person_days || statsCache.month_person || []).forEach((item) => {
+        if (item.month) monthSet.add(item.month)
+      })
+
+      // 人员
+      personSelect.innerHTML = '<option value="">全部人员（总次数）</option>'
+      Array.from(personSet)
+        .sort()
+        .forEach((name) => {
+          const opt = document.createElement('option')
+          opt.value = name
+          opt.textContent = name
+          personSelect.appendChild(opt)
+        })
+
+      // 月份
+      const months = Array.from(monthSet).sort()
+      monthSelect.innerHTML = '<option value="">全部月份</option>'
+      months.forEach((m) => {
+        const opt = document.createElement('option')
+        opt.value = m
+        opt.textContent = m
+        monthSelect.appendChild(opt)
+      })
+      if (months.length > 0) {
+        monthSelect.value = months[months.length - 1] // 默认选最新月份
       }
+    }
+    // 图表1：某人某日来了几次
+    function updatePersonDailyChart() {
+      if (!statsCache) return
 
-      similarityChart = new Chart(ctx, {
-        type: 'line',
+      const person = document.getElementById('personSelect').value
+      const arr = statsCache.person_day || []
+
+      const map = {}
+      arr.forEach((item) => {
+        if (person && item.person !== person) return
+        const d = item.date || ''
+        if (!map[d]) map[d] = 0
+        map[d] += item.count || 0
+      })
+
+      const dates = Object.keys(map).sort()
+      const counts = dates.map((d) => map[d])
+
+      const ctx = document.getElementById('personDailyChart').getContext('2d')
+      if (personDailyChart) personDailyChart.destroy()
+
+      personDailyChart = new Chart(ctx, {
+        type: 'bar',
         data: {
-          labels,
+          labels: dates,
           datasets: [
             {
-              label: '相似度 (OK)',
-              data: similarities,
-              borderWidth: 1.5,
-              tension: 0.15,
-              pointRadius: 1.5,
-              pointHitRadius: 6,
-              borderColor: 'rgba(56, 189, 248, 0.9)',
-              backgroundColor: 'rgba(56, 189, 248, 0.2)',
-            },
-            {
-              label: '阈值',
-              data: thresholds,
+              label: person ? `有效签到次数 - ${person}` : '每天总有效签到次数',
+              data: counts,
               borderWidth: 1,
-              tension: 0.1,
-              borderDash: [4, 4],
-              borderColor: 'rgba(148, 163, 184, 0.9)',
             },
           ],
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          interaction: {
-            mode: 'index',
-            intersect: false,
-          },
           plugins: {
             legend: {
-              labels: {
-                color: '#e5e7eb',
-                font: { size: 11 },
-              },
+              labels: { color: '#e5e7eb', font: { size: 11 } },
             },
           },
           scales: {
             x: {
-              ticks: {
-                color: '#9ca3af',
-                maxRotation: 45,
-                minRotation: 0,
-              },
-              grid: {
-                display: false,
-              },
+              ticks: { color: '#9ca3af', maxRotation: 45, minRotation: 0 },
+              grid: { display: false },
             },
             y: {
-              ticks: {
-                color: '#9ca3af',
-              },
-              grid: {
-                color: 'rgba(55,65,81,0.5)',
-              },
-              suggestedMin: 0,
-              suggestedMax: 1,
+              ticks: { color: '#9ca3af' },
+              grid: { color: 'rgba(55,65,81,0.5)' },
+              beginAtZero: true,
             },
           },
         },
       })
     }
 
-    // 请求列表数据
+    // 图表2：某日有几个人来
+    function updateDayPeopleChart() {
+      if (!statsCache) return
+
+      const arr = statsCache.day_people || []
+      const sorted = arr.slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+
+      const labels = sorted.map((i) => i.date || '')
+      const people = sorted.map((i) => i.people || 0)
+
+      const ctx = document.getElementById('dayPeopleChart').getContext('2d')
+      if (dayPeopleChart) dayPeopleChart.destroy()
+
+      dayPeopleChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: '每天有效访客人数（去重）',
+              data: people,
+              borderWidth: 1.5,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: {
+              labels: { color: '#e5e7eb', font: { size: 11 } },
+            },
+          },
+          scales: {
+            x: {
+              ticks: { color: '#9ca3af', maxRotation: 45, minRotation: 0 },
+              grid: { display: false },
+            },
+            y: {
+              ticks: { color: '#9ca3af' },
+              grid: { color: 'rgba(55,65,81,0.5)' },
+              beginAtZero: true,
+            },
+          },
+        },
+      })
+    }
+
+    // 图表3：某月某人来的天数
+    function updateMonthPersonChart() {
+      if (!statsCache) return
+
+      const monthSelect = document.getElementById('monthSelect')
+      const month = monthSelect.value
+      const arr = statsCache.month_person_days || statsCache.month_person || []
+
+      const map = {}
+      arr.forEach((item) => {
+        if (month && item.month !== month) return
+        const p = item.person || '未知'
+        if (!map[p]) map[p] = 0
+        map[p] += item.days || 0
+      })
+
+      const persons = Object.keys(map).sort()
+      const days = persons.map((p) => map[p])
+
+      const ctx = document.getElementById('monthPersonChart').getContext('2d')
+      if (monthPersonChart) monthPersonChart.destroy()
+
+      monthPersonChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: persons,
+          datasets: [
+            {
+              label: month ? `${month} 出勤天数` : '出勤天数（所有月份合并）',
+              data: days,
+              borderWidth: 1,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              labels: { color: '#e5e7eb', font: { size: 11 } },
+            },
+          },
+          scales: {
+            x: {
+              ticks: { color: '#9ca3af', maxRotation: 45, minRotation: 0 },
+              grid: { display: false },
+            },
+            y: {
+              ticks: { color: '#9ca3af' },
+              grid: { color: 'rgba(55,65,81,0.5)' },
+              beginAtZero: true,
+            },
+          },
+        },
+      })
+    }
+    // 列表数据（原始记录）
     async function fetchData() {
       const status = document.getElementById('statusFilter').value
       const q = document.getElementById('searchInput').value.trim()
@@ -422,10 +601,10 @@
       prevBtn.disabled = page <= 1
       nextBtn.disabled = page >= totalPages
     }
-
+    // 打开详情（图片通过 /image?path=ABS_PATH 来加载）
     function openDetailModal(rec) {
       document.getElementById('detailTimestamp').textContent = rec.timestamp || '-'
-      document.getElementById('detailStatus').textContent = rec.status || '-'
+      document.getElementById('detailStatus').textContent = rec.status || '(空)'
       document.getElementById('detailMatchName').textContent = rec.match_name || '-'
       document.getElementById('detailSimilarity').textContent = rec.similarity || '-'
       document.getElementById('detailThreshold').textContent = rec.threshold || '-'
@@ -436,7 +615,8 @@
       const pathEl = document.getElementById('detailImagePath')
 
       if (rec.image_path) {
-        img.src = rec.image_path
+        const url = '/image?path=' + encodeURIComponent(rec.image_path)
+        img.src = url
         img.classList.remove('hidden')
         placeholder.classList.add('hidden')
         pathEl.textContent = rec.image_path
@@ -467,6 +647,8 @@
       const tableBody = document.getElementById('tableBody')
       const detailClose = document.getElementById('detailClose')
       const detailModal = document.getElementById('detailModal')
+      const personSelect = document.getElementById('personSelect')
+      const monthSelect = document.getElementById('monthSelect')
 
       searchInput.addEventListener(
         'input',
@@ -498,6 +680,14 @@
       refreshBtn.addEventListener('click', () => {
         fetchStats()
         fetchData()
+      })
+
+      personSelect.addEventListener('change', () => {
+        updatePersonDailyChart()
+      })
+
+      monthSelect.addEventListener('change', () => {
+        updateMonthPersonChart()
       })
 
       // 详情按钮事件

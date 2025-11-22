@@ -212,7 +212,6 @@ def save_face_image(face_img):
     cv2.imwrite(save_path, face_img)
     return save_path
 
-
 def recognize_face(session, frame, face):
     """
     对单张人脸进行识别：
@@ -228,17 +227,24 @@ def recognize_face(session, frame, face):
     if result is None:
         return False, 0.0, -1, None
 
-    # 在 1.2.3 里返回的是 SearchResult 对象
-    # 一般有 result.confidence 和 result.face_id / identity_id 之类的字段
+    # 正确的用法：SearchResult 对象
+    # confidence 在 result.confidence
+    # id 在 result.similar_identity.id
     confidence = getattr(result, "confidence", 0.0)
-    identity_id = getattr(result, "face_id", None)
-    if identity_id is None:
-        identity_id = getattr(result, "identity_id", -1)
+
+    similar_identity = getattr(result, "similar_identity", None)
+    if similar_identity is not None:
+        identity_id = getattr(similar_identity, "id", -1)
+    else:
+        identity_id = -1
 
     is_match = confidence >= SEARCH_THRESHOLD
 
+    # 从 label_map.json 里取名字
     label = KNOWN_LABEL_MAP.get(str(identity_id))
+
     return is_match, float(confidence), int(identity_id), label
+
 
 
 
