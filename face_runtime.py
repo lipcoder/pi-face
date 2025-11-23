@@ -43,6 +43,9 @@ SEARCH_THRESHOLD = 0.48
 # 是否显示调试窗口
 SHOW_WINDOW = False
 
+# 连续读取失败多少次后重建连接
+MAX_FRAME_FAILS = 5
+
 # 全局：face_id -> label
 KNOWN_LABEL_MAP = {}
 
@@ -150,12 +153,7 @@ def recognize_face(session, frame, face):
     if result is None:
         return False, 0.0, -1, None
 
-    # ======= 关键修正点：从 similar_identity.id 拿 ID，而不是乱猜字段名 =======
-    # 官方文档示例：
-    # search_result = isf.feature_hub_face_search(query_feature)
-    # if search_result.similar_identity.id != -1:
-    #     print(search_result.similar_identity.id, search_result.confidence)
-    # ============================================================
+    # 关键：从 similar_identity.id 拿 ID
     if result.similar_identity is None or result.similar_identity.id == -1:
         return False, float(result.confidence), -1, None
 
@@ -198,25 +196,49 @@ def log_to_csv(timestamp, image_path, label, confidence, status):
         ])
 
 
-# ================== 主循环：拉流 + 识别 ==================
+# ================== 主循环：拉流 + 识别（带自动重连） ==================
 
 def main():
     session = init_inspireface()
 
-    print("[INFO] 使用视频源：", VIDEO_SOURCE)
-    cap = cv2.VideoCapture(VIDEO_SOURCE)
-
-    if not cap.isOpened():
-        print("[ERROR] 无法打开视频源：", VIDEO_SOURCE)
-        return
+    cap = None
+    fail_count = 0
 
     try:
         while True:
+            # 如果还没有 cap，或者 cap 被释放了 / 打不开，就尝试重新连接
+            if cap is None or not cap.isOpened():
+                print("[INFO] 尝试连接视频源：", VIDEO_SOURCE)
+                cap = cv2.VideoCapture(VIDEO_SOURCE)
+
+                if not cap.isOpened():
+                    print("[ERROR] 无法打开视频源，2 秒后重试...")
+                    if cap is not None:
+                        cap.release()
+                    cap = None
+                    time.sleep(2)
+                    continue
+
+                print("[INFO] 视频源连接成功。")
+                fail_count = 0
+
+            # 读取一帧
             ret, frame = cap.read()
             if not ret or frame is None:
-                print("[WARN] 读取帧失败，稍后重试...")
+                fail_count += 1
+                print(f"[WARN] 读取帧失败（{fail_count}/{MAX_FRAME_FAILS}），0.1 秒后重试...")
                 time.sleep(0.1)
+
+                # 连续多次失败：断开并重连
+                if fail_count >= MAX_FRAME_FAILS:
+                    print("[INFO] 连续读取帧失败次数过多，重置视频连接...")
+                    cap.release()
+                    cap = None
+                    fail_count = 0
                 continue
+
+            # 一旦成功读到帧，失败计数清零
+            fail_count = 0
 
             faces = session.face_detection(frame)
             if not faces:
@@ -265,10 +287,11 @@ def main():
             if SHOW_WINDOW:
                 cv2.imshow("Face Runtime", frame)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
-                    break
+                    return
 
     finally:
-        cap.release()
+        if cap is not None:
+            cap.release()
         if SHOW_WINDOW:
             cv2.destroyAllWindows()
         print("[INFO] 资源已释放，程序退出。")
