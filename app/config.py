@@ -49,5 +49,4 @@ HIK_CHANNEL_SUB = os.environ.get("HIK_CHANNEL_SUB", "Streaming/Channels/102")
 HTTP_HOST = os.environ.get("HTTP_HOST", "0.0.0.0")
 HTTP_PORT = int(os.environ.get("HTTP_PORT", "5000"))
 
-# ========== Web 前端端口（Go）==========
-WEB_PORT = int(os.environ.get("WEB_PORT", "8080"))
+
