@@ -21,13 +21,6 @@ CANDIDATE_URLS = [
     f"rtsp://{USER}:{PWD}@{IP}:{PORT}/Streaming/Channels/102",
     f"rtsp://{USER}:{PWD}@{IP}:{PORT}/Streaming/Channels/102?transportmode=unicast",
 
-    # 老格式 H.264
-    f"rtsp://{USER}:{PWD}@{IP}:{PORT}/h264/ch1/main/av_stream",
-    f"rtsp://{USER}:{PWD}@{IP}:{PORT}/h264/ch1/sub/av_stream",
-
-    # 老格式 H.265（部分新设备）
-    f"rtsp://{USER}:{PWD}@{IP}:{PORT}/h265/ch1/main/av_stream",
-    f"rtsp://{USER}:{PWD}@{IP}:{PORT}/h265/ch1/sub/av_stream",
 ]
 
 latest_frame = None
