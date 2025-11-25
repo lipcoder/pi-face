@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -46,30 +47,41 @@ type MonthPersonDays struct {
 }
 
 type StatsResponse struct {
-	Total        int               `json:"total"`           // 原始总记录数
-	MatchRaw     int               `json:"match_raw"`       // status=MATCH 的原始记录数（未去重）
-	Valid        int               `json:"valid"`           // 按 1 小时去重后的有效签到次数
-	Error        int               `json:"error"`           // status=ERROR
-	NoFace       int               `json:"no_face"`         // status=NO_FACE
-	OtherInvalid int               `json:"other_invalid"`   // 其他非 MATCH 的状态
-	PersonDay    []PersonDayCount  `json:"person_day"`      // 某人某日来了几次
-	DayPeople    []DayPeopleCount  `json:"day_people"`      // 某日有几个人来
+	Total        int               `json:"total"`             // 原始总记录数
+	MatchRaw     int               `json:"match_raw"`         // status=MATCH 的原始记录数（未去重）
+	Valid        int               `json:"valid"`             // 按 1 小时去重后的有效签到次数
+	Error        int               `json:"error"`             // status=ERROR
+	NoFace       int               `json:"no_face"`           // status=NO_FACE
+	OtherInvalid int               `json:"other_invalid"`     // 其他非 MATCH 的状态
+	PersonDay    []PersonDayCount  `json:"person_day"`        // 某人某日来了几次
+	DayPeople    []DayPeopleCount  `json:"day_people"`        // 某日有几个人来
 	MonthPerson  []MonthPersonDays `json:"month_person_days"` // 某月某人来的天数
 }
 
-var csvPath string
+var (
+	csvPath string // 日志 CSV 文件路径（相对路径）
+	dataDir string // data 目录根（相对路径）
+)
+
 func main() {
-	// 日志 CSV 绝对路径，默认 /data/logs/records.csv，可用环境变量覆盖
-	csvPath = os.Getenv("RECORDS_CSV_PATH")
-	if csvPath == "" {
-		csvPath = "../data/logs/records.csv"
+	// data 根目录，默认 ../data，可以用 DATA_DIR 环境变量覆盖
+	dataDir = os.Getenv("DATA_DIR")
+	if dataDir == "" {
+		dataDir = "../data"
 	}
 
+	// 日志 CSV 路径，默认 dataDir/logs/records.csv，可用 RECORDS_CSV_PATH 覆盖
+	csvPath = os.Getenv("RECORDS_CSV_PATH")
+	if csvPath == "" {
+		csvPath = filepath.Join(dataDir, "logs", "records.csv")
+	}
+
+	log.Printf("使用 data 目录: %s", dataDir)
 	log.Printf("使用日志文件: %s", csvPath)
 
 	mux := http.NewServeMux()
 
-	// 前端静态文件（/app/web/static）
+	// 前端静态文件（web/static），相对路径
 	fs := http.FileServer(http.Dir("./static"))
 	mux.Handle("/", fs)
 
@@ -77,7 +89,7 @@ func main() {
 	mux.HandleFunc("/api/records", handleRecords)
 	mux.HandleFunc("/api/stats", handleStats)
 
-	// 图片预览：/image?path=/data/unknow/xxx.jpg
+	// 图片预览：/image?path=unknow/xxx.jpg （相对于 dataDir）
 	mux.HandleFunc("/image", handleImage)
 
 	log.Println("服务启动成功：http://0.0.0.0:8080")
@@ -94,7 +106,7 @@ func loggingMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// 每次请求重新从绝对路径读取 CSV，保证看到最新记录
+// 每次请求重新读取 CSV，保证看到最新记录
 func loadRecordsFromCSV(path string) ([]Record, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -154,6 +166,7 @@ func loadRecordsFromCSV(path string) ([]Record, error) {
 
 	return result, nil
 }
+
 // /api/records?status=MATCH|ERROR|NO_FACE&q=...&page=1&pageSize=20
 // 列表只是原始行，不做 1 小时去重，方便排查
 func handleRecords(w http.ResponseWriter, r *http.Request) {
@@ -212,6 +225,26 @@ func handleRecords(w http.ResponseWriter, r *http.Request) {
 		filtered = append(filtered, rec)
 	}
 
+	// ⭐ 新增：按时间倒序排序（最新的在前）
+	sort.Slice(filtered, func(i, j int) bool {
+		ti, err1 := parseTimestamp(filtered[i].Timestamp)
+		tj, err2 := parseTimestamp(filtered[j].Timestamp)
+
+		// 解析失败的，放在比较后面
+		if err1 != nil && err2 != nil {
+			return filtered[i].ID > filtered[j].ID
+		}
+		if err1 != nil {
+			return false
+		}
+		if err2 != nil {
+			return true
+		}
+
+		// 最新时间排在前面
+		return ti.After(tj)
+	})
+
 	total := len(filtered)
 	start := (page - 1) * pageSize
 	if start > total {
@@ -239,6 +272,8 @@ func handleRecords(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
+
 // /api/stats
 // 图表只基于 status=MATCH 的记录，并且对“同一个人 1 小时内的签到”合并为一次有效签到
 func handleStats(w http.ResponseWriter, r *http.Request) {
@@ -265,21 +300,30 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 	// 先按 status 分类，并把 status=MATCH 的记录按人聚合，解析时间
 	for _, rec := range records {
 		sTrim := strings.TrimSpace(rec.Status)
-		upper := strings.ToUpper(sTrim)
+		upperStatus := strings.ToUpper(sTrim)
 
-		switch upper {
+		switch upperStatus {
 		case "MATCH":
 			matchRaw++
+
 			t, err := parseTimestamp(rec.Timestamp)
 			if err != nil {
 				// 时间解析失败的 MATCH 记录，只记在 matchRaw，不参与时间统计
 				continue
 			}
-			person := strings.TrimSpace(rec.MatchName)
-			if person == "" {
-				person = "未知"
+
+			// ====== 关键改动：过滤掉 UNKNOWN / NO_FACE / 空名字 ======
+			rawName := strings.TrimSpace(rec.MatchName)
+			upperName := strings.ToUpper(rawName)
+			if rawName == "" || upperName == "UNKNOWN" || upperName == "NO_FACE" {
+				// 这种视为“无真实人名”：只计入 matchRaw，不参与后面的按人统计
+				continue
 			}
+			person := rawName
+			// ===================================================
+
 			personMap[person] = append(personMap[person], timedRec{rec: rec, t: t})
+
 		case "ERROR":
 			stats.Error++
 		case "NO_FACE":
@@ -294,8 +338,8 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 	stats.MatchRaw = matchRaw
 
 	// 用于统计：
-	personDayMap := make(map[string]int)                                // person|date -> count
-	dayPeopleMap := make(map[string]map[string]struct{})                // date -> set(person)
+	personDayMap := make(map[string]int)                                   // person|date -> count
+	dayPeopleMap := make(map[string]map[string]struct{})                   // date -> set(person)
 	monthPersonDaysMap := make(map[string]map[string]map[string]struct{}) // month -> person -> set(date)
 
 	// 对每个人做时间排序 & 1 小时去重
@@ -396,21 +440,30 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
-// 图片接口：/image?path=/data/unknow/xxx.jpg
-// 限制只能访问 /data/ 下的文件
+
+
+// 图片接口：/image?path=unknow/xxx.jpg
+// 只允许访问 dataDir 下的文件，path 是相对 dataDir 的相对路径
 func handleImage(w http.ResponseWriter, r *http.Request) {
-	path := strings.TrimSpace(r.URL.Query().Get("path"))
-	if path == "" {
+	relPath := strings.TrimSpace(r.URL.Query().Get("path"))
+	if relPath == "" {
 		http.Error(w, "missing path", http.StatusBadRequest)
 		return
 	}
 
-	if !strings.HasPrefix(path, "/data/") {
+	// 规范化路径，防止 ../../ 逃逸
+	relPath = filepath.Clean(relPath)
+
+	// 不允许绝对路径或跳出 data 目录
+	if filepath.IsAbs(relPath) || strings.HasPrefix(relPath, "..") {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 
-	http.ServeFile(w, r, path)
+	fullPath := filepath.Join(dataDir, relPath)
+	log.Printf("serve image: %s (rel: %s)", fullPath, relPath)
+
+	http.ServeFile(w, r, fullPath)
 }
 
 // 工具函数
