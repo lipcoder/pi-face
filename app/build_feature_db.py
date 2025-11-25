@@ -7,27 +7,17 @@ import json
 import cv2
 import inspireface as isf
 
-# ================== 路径配置（迁移时主要改这里） ==================
+from app.config import (
+    KNOW_DIR as KNOW_FACE_DIR,
+    FEATURE_DB_DIR,
+    FEATURE_DB_PATH,
+    LABEL_MAP_PATH,
+    SEARCH_THRESHOLD,
+)
 
-# 当前脚本所在目录
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# 项目 data 目录（默认为 ../data）
-DATA_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "data"))
-
-# 已知人脸目录
-KNOW_FACE_DIR = os.path.join(DATA_DIR, "know")
-
-# 特征数据库目录与文件
-FEATURE_DB_DIR = os.path.join(DATA_DIR, "feature_db")
-FEATURE_DB_PATH = os.path.join(FEATURE_DB_DIR, "feature_hub.db")
-LABEL_MAP_PATH = os.path.join(FEATURE_DB_DIR, "label_map.json")
-
+# 确保目录存在
 os.makedirs(KNOW_FACE_DIR, exist_ok=True)
 os.makedirs(FEATURE_DB_DIR, exist_ok=True)
-
-# 识别阈值（与运行脚本保持一致）
-SEARCH_THRESHOLD = 0.48
 
 # 全局：face_id -> label
 KNOWN_LABEL_MAP = {}

@@ -3,25 +3,27 @@ import time
 import threading
 
 from flask import Flask, Response, render_template_string
+from app.config import (
+    HIK_IP,
+    HIK_USER,
+    HIK_PWD,
+    HIK_PORT,
+    HIK_CHANNEL_MAIN,
+    HIK_CHANNEL_SUB,
+    HTTP_HOST,
+    HTTP_PORT,
+)
 
-# ======== 配置区域 ========
-IP = "192.168.1.111"
-USER = "admin"
-PWD = "Long-Live-NBALab"
-PORT = 554              # RTSP 端口，一般海康默认 554
-HTTP_HOST = "0.0.0.0"   # 对外监听地址，0.0.0.0 表示所有网卡
-HTTP_PORT = 5000        # 本地 HTTP 端口
-# =======================
-
-# 海康常见 RTSP URL 候选列表
+# 海康常见 RTSP URL 候选列表（基于 config）
 CANDIDATE_URLS = [
-    # 新格式，主码流 / 子码流
-    f"rtsp://{USER}:{PWD}@{IP}:{PORT}/Streaming/Channels/101",
-    f"rtsp://{USER}:{PWD}@{IP}:{PORT}/Streaming/Channels/101?transportmode=unicast",
-    f"rtsp://{USER}:{PWD}@{IP}:{PORT}/Streaming/Channels/102",
-    f"rtsp://{USER}:{PWD}@{IP}:{PORT}/Streaming/Channels/102?transportmode=unicast",
-
+    # 主码流
+    f"rtsp://{HIK_USER}:{HIK_PWD}@{HIK_IP}:{HIK_PORT}/{HIK_CHANNEL_MAIN}",
+    f"rtsp://{HIK_USER}:{HIK_PWD}@{HIK_IP}:{HIK_PORT}/{HIK_CHANNEL_MAIN}?transportmode=unicast",
+    # 子码流
+    f"rtsp://{HIK_USER}:{HIK_PWD}@{HIK_IP}:{HIK_PORT}/{HIK_CHANNEL_SUB}",
+    f"rtsp://{HIK_USER}:{HIK_PWD}@{HIK_IP}:{HIK_PORT}/{HIK_CHANNEL_SUB}?transportmode=unicast",
 ]
+
 
 latest_frame = None
 frame_lock = threading.Lock()

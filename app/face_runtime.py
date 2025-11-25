@@ -10,35 +10,23 @@ from datetime import datetime
 import cv2
 import inspireface as isf
 
-# ================== 路径 & 配置（迁移时主要改这里） ==================
+# ================== 路径 & 配置（统一走 app.config） ==================
+from app.config import (
+    UNKNOW_DIR as FACE_SAVE_DIR,
+    FEATURE_DB_DIR,
+    FEATURE_DB_PATH,
+    LABEL_MAP_PATH,
+    LOG_DIR,
+    RECORDS_CSV_PATH,
+    SEARCH_THRESHOLD,
+    VIDEO_SOURCE,
+)
 
-# 当前脚本所在目录
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# 项目 data 目录（默认为 ../data）
-DATA_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "data"))
-
-# 视频流来源（默认本地 5000 端口）
-VIDEO_SOURCE = os.environ.get("VIDEO_SOURCE", "http://127.0.0.1:5000/video_feed")
-
-# 未知人脸实际保存目录（物理路径）
-FACE_SAVE_DIR = os.path.join(DATA_DIR, "unknow")
-
-# 特征数据库目录与文件（与 build_feature_db.py 保持完全一致）
-FEATURE_DB_DIR = os.path.join(DATA_DIR, "feature_db")
-FEATURE_DB_PATH = os.path.join(FEATURE_DB_DIR, "feature_hub.db")
-LABEL_MAP_PATH = os.path.join(FEATURE_DB_DIR, "label_map.json")
-
-# 日志目录 & 文件
-LOG_DIR = os.path.join(DATA_DIR, "logs")
-RECORDS_CSV_PATH = os.path.join(LOG_DIR, "records.csv")
-
+# 确保目录存在
 os.makedirs(FACE_SAVE_DIR, exist_ok=True)
 os.makedirs(FEATURE_DB_DIR, exist_ok=True)
 os.makedirs(LOG_DIR, exist_ok=True)
 
-# 识别阈值（要与建库脚本一致）
-SEARCH_THRESHOLD = 0.48
 
 # 是否显示调试窗口
 SHOW_WINDOW = False
