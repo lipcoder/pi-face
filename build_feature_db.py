@@ -15,7 +15,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 # 项目 data 目录（默认为 ../data）
 DATA_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "data"))
 
-# 已知人脸目录（如果你目录真叫 konw，就把 "know" 改成 "konw"）
+# 已知人脸目录
 KNOW_FACE_DIR = os.path.join(DATA_DIR, "know")
 
 # 特征数据库目录与文件
