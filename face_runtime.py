@@ -172,7 +172,7 @@ def recognize_face(session, frame, face):
 def log_to_csv(timestamp, image_path, label, confidence, status):
     """
     严格按格式写入：
-    2025-11-22 10:03:48,/data/unknow/20251122_100348_139706.jpg,xue,0.721357,0.480000,MATCH,
+    2025-11-22 10:03:48,/data/unknow/20251122_100348_139706.jpg,name,0.721357,0.480000,MATCH,
     """
 
     # image_path 是物理路径，我们只在日志里写统一的逻辑路径 /data/unknow/xxx.jpg
