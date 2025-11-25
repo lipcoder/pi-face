@@ -62,7 +62,7 @@ func main() {
 	// 日志 CSV 绝对路径，默认 /data/logs/records.csv，可用环境变量覆盖
 	csvPath = os.Getenv("RECORDS_CSV_PATH")
 	if csvPath == "" {
-		csvPath = "/data/logs/records.csv"
+		csvPath = "../data/logs/records.csv"
 	}
 
 	log.Printf("使用日志文件: %s", csvPath)
