@@ -17,7 +17,7 @@ DATA_ROOT 是所有数据的根目录：
 如果你本地想用项目里的 ./data，也可以：
   export DATA_ROOT=/absolute/path/to/project/face/data
 """
-DATA_ROOT = os.environ.get("DATA_ROOT", "/data")
+DATA_ROOT = os.environ.get("DATA_ROOT", os.path.join(BASE_DIR, "data"))
 
 # ========== 各子目录 / 文件 ==========
 FEATURE_DB_DIR = os.path.join(DATA_ROOT, "feature_db")
