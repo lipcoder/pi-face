@@ -19,7 +19,7 @@ services:
 
     volumes:
       # 你的数据卷：可以是宿主机 /data，也可以是项目下 ./data，看你习惯
-      - ~/project/face/data:/data
+      - $HOME/project/face/data:/data
       # 可选：缓存 InspireFace 模型，避免每次启动都重新下载
-      - ~/project/face/inspireface-cache:/root/.inspireface
+      - $HOME/project/face/inspireface-cache:/root/.inspireface
 

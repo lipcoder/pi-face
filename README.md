@@ -86,7 +86,6 @@ Tailwind + Chart.js，无需构建。\
 
 ### 5.1 Docker（推荐）
 
-    mkdir -p /data/{know,unknow,feature_db,logs}
     docker compose up --build
 
 建库：
