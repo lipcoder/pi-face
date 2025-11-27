@@ -10,20 +10,9 @@ services:
       # 容器里统一用 /data，方便和 config.py 对齐
       DATA_ROOT: /data
 
-      # 下面这几个根据你实际摄像头情况自己改
-      HIK_IP: "192.168.1.111"
-      HIK_USER: "admin"
-      HIK_PWD: "Long-Live-NBALab"
-      HIK_PORT: "554"
-      HIK_CHANNEL_MAIN: "Streaming/Channels/101"
-      HIK_CHANNEL_SUB: "Streaming/Channels/102"
-
       # MJPEG HTTP 服务配置
       HTTP_HOST: "0.0.0.0"
       HTTP_PORT: "5000"
-
-      # face_runtime 读 MJPEG 的地址（容器内访问 127.0.0.1:5000）
-      VIDEO_SOURCE: "http://127.0.0.1:5000/video_feed"
 
     ports:
       - "5000:5000"   # 对外暴露 MJPEG / snapshot
