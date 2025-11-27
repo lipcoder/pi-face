@@ -86,25 +86,17 @@ Tailwind + Chart.js，无需构建。\
 
 ### 5.1 Docker（推荐）
 
+创建：
+
     docker compose up --build
 
 建库：
 
     docker run --rm pi-face python -m app.build_feature_db
 
-运行：
+运行现有镜像：
 
-    docker run --name pi-face   -v /data:/data   -p 5000:5000   -p 8080:8080   pi-face
+    docker compose up -d
 
 访问： - MJPEG：<http://localhost:5000/> -
 看板：<http://localhost:8080/>
-
-## 6. 目录结构
-
-    .
-    ├── app/
-    ├── web/
-    ├── dockerfile
-    ├── entrypoint.sh
-    └── requirements.txt
-
