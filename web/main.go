@@ -108,64 +108,47 @@ func loggingMiddleware(next http.Handler) http.Handler {
 
 // 每次请求重新读取 CSV，保证看到最新记录
 func loadRecordsFromCSV(path string) ([]Record, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
+    f, err := os.Open(path)
+    if err != nil {
+        return nil, err
+    }
+    defer f.Close()
 
-	reader := csv.NewReader(f)
+    reader := csv.NewReader(f)
+    var result []Record
+    id := 1
 
-	header, err := reader.Read()
-	if err == io.EOF {
-		return []Record{}, nil
-	}
-	if err != nil {
-		return nil, err
-	}
+    for {
+        row, err := reader.Read()
+        if err == io.EOF {
+            break
+        }
+        if err != nil {
+            return nil, err
+        }
 
-	index := map[string]int{}
-	for i, h := range header {
-		h = strings.TrimSpace(h)
-		index[h] = i
-	}
+        // 根据你实际的列顺序调整下标
+        if len(row) < 6 {
+            continue
+        }
 
-	get := func(row []string, key string) string {
-		i, ok := index[key]
-		if !ok || i >= len(row) {
-			return ""
-		}
-		return strings.TrimSpace(row[i])
-	}
+        rec := Record{
+            ID:         id,
+            Timestamp:  strings.TrimSpace(row[0]),
+            ImagePath:  strings.TrimSpace(row[1]),
+            MatchName:  strings.TrimSpace(row[2]),
+            Similarity: strings.TrimSpace(row[3]),
+            Threshold:  strings.TrimSpace(row[4]),
+            Status:     strings.TrimSpace(row[5]),
+            // Message: row[6] 如果有第 7 列的话
+        }	
 
-	var result []Record
-	id := 1
-
-	for {
-		row, err := reader.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
-
-		rec := Record{
-			ID:         id,
-			Timestamp:  get(row, "timestamp"),
-			ImagePath:  get(row, "image_path"),
-			MatchName:  get(row, "match_name"),
-			Similarity: get(row, "similarity"),
-			Threshold:  get(row, "threshold"),
-			Status:     get(row, "status"),
-			Message:    get(row, "message"),
-		}
-		result = append(result, rec)
-		id++
-	}
-
-	return result, nil
+        result = append(result, rec)
+        id++
+    }
+    return result, nil
 }
+
 
 // /api/records?status=MATCH|ERROR|NO_FACE&q=...&page=1&pageSize=20
 // 列表只是原始行，不做 1 小时去重，方便排查
@@ -225,7 +208,7 @@ func handleRecords(w http.ResponseWriter, r *http.Request) {
 		filtered = append(filtered, rec)
 	}
 
-	// ⭐ 新增：按时间倒序排序（最新的在前）
+	//按时间倒序排序
 	sort.Slice(filtered, func(i, j int) bool {
 		ti, err1 := parseTimestamp(filtered[i].Timestamp)
 		tj, err2 := parseTimestamp(filtered[j].Timestamp)
