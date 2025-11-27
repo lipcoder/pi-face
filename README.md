@@ -87,11 +87,11 @@ Tailwind + Chart.js，无需构建。\
 ### 5.1 Docker（推荐）
 
     mkdir -p /data/{know,unknow,feature_db,logs}
-    docker build -t pi-face .
+    docker compose up --build
 
 建库：
 
-    docker run --rm -v /data:/data pi-face python app/build_feature_db.py
+    docker run --rm pi-face python -m app.build_feature_db
 
 运行：
 
