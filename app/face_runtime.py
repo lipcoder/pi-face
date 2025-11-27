@@ -255,7 +255,7 @@ def main():
                     status = "UNKNOWN"
                     print(f"[{ts}] UNKNOWN id={identity_id} conf={conf:.3f} img={face_path}")
 
-                # 写入 CSV 日志（这里第三列就是名字）
+                # 写入 CSV 日志
                 log_to_csv(
                     timestamp=ts,
                     image_path=face_path,
