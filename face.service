@@ -1,0 +1,25 @@
+[Unit]
+Description=Face project (docker compose + web main)
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+Type=simple
+User=server
+
+# 先启动 docker compose（保持不变）
+ExecStartPre=/usr/bin/docker compose -f /home/server/project/face/docker-compose.yml up -d
+
+# 告诉 systemd：以后所有命令都在这个目录里跑
+WorkingDirectory=/home/server/project/face/web
+
+# 启动 ./main（现在等价于 cd /home/server/project/face/web && ./main）
+ExecStart=/home/server/project/face/web/main
+
+Restart=on-failure
+RestartSec=5
+
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+[Install]
+WantedBy=multi-user.target
