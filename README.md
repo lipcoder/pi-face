@@ -90,6 +90,10 @@ Tailwind + Chart.js，无需构建。\
 
     docker compose up --build
 
+查看：
+
+    docker compose -f docker-compose.yml logs -f pi-face
+
 建库：
 
     docker run --rm pi-face python -m app.build_feature_db
