@@ -2,7 +2,7 @@ version: "3.9"
 
 services:
   pi-face:
-    image: pi-face:latest
+    image: face-pi-face:latest
     container_name: pi-face
     restart: unless-stopped
 
