@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <title>人脸识别日志看板</title>
+  <title>人脸识别签到看板</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <!-- Tailwind CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -13,10 +13,10 @@
     <header class="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
       <div>
         <h1 class="text-3xl font-semibold tracking-tight">
-          人脸识别日志看板
+          人脸识别签到看板
         </h1>
         <p class="text-sm text-slate-400 mt-1">
-          图表只统计 <code>status=MATCH</code> 的记录，并按“同一人一小时内”合并为一次有效签到
+          仅统计 <code>status=MATCH</code> 的记录，并按“同一人一小时内”合并为一次有效签到
         </p>
       </div>
       <div class="flex items-center gap-3">
@@ -35,7 +35,7 @@
         <div id="totalCount" class="mt-2 text-2xl font-semibold">-</div>
       </div>
       <div class="rounded-2xl border border-emerald-500/40 bg-slate-900/70 p-4">
-        <div class="text-xs font-medium text-emerald-300">有效签到（status=MATCH，1 小时去重后）</div>
+        <div class="text-xs font-medium text-emerald-300">有效签到（1 小时去重后）</div>
         <div id="validCount" class="mt-2 text-2xl font-semibold text-emerald-300">-</div>
       </div>
       <div class="rounded-2xl border border-rose-500/40 bg-slate-900/70 p-4">
@@ -48,114 +48,134 @@
       </div>
     </section>
 
-    <!-- 图表：某人某日来了几次 -->
-    <section class="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 md:p-5">
-      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
-        <h2 class="text-sm font-medium text-slate-100">
-          某人某日来了几次（仅统计 MATCH + 一小时去重后的有效签到）
-        </h2>
-        <div class="flex items-center gap-2">
-          <label for="personSelect" class="text-xs text-slate-400">选择人员：</label>
-          <select
-            id="personSelect"
-            class="text-xs md:text-sm rounded-xl border border-slate-700 bg-slate-900/80 px-3 py-1.5 focus:border-sky-500/70 outline-none">
-            <option value="">全部人员（总次数）</option>
-          </select>
+    <!-- 每周 / 每月 签到人数折线图 -->
+    <section class="grid gap-4 lg:grid-cols-2">
+      <!-- 每周签到人数 -->
+      <div class="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 md:p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-medium text-slate-100">
+            每周签到人数（去重，按有效签到统计）
+          </h2>
         </div>
+        <div class="relative h-64 md:h-72">
+          <canvas id="weeklySignChart"></canvas>
+        </div>
+        <p class="mt-2 text-[11px] text-slate-500">
+          以周一为一周的开始，将每天有效访客人数（去重后人数）按周汇总。
+        </p>
       </div>
-      <div class="relative h-64 md:h-72">
-        <canvas id="personDailyChart"></canvas>
-      </div>
-      <p class="mt-2 text-[11px] text-slate-500">
-        不选人员时，表示统计每天总的有效签到次数；选中某个人之后，就只看该人每天来了几次。
-      </p>
-    </section>
-    <!-- 图表：某日有几个人来 -->
-    <section class="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 md:p-5">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-sm font-medium text-slate-100">
-          某日有几个人来（每天有效访客人数，去重，仅统计 MATCH）
-        </h2>
-      </div>
-      <div class="relative h-64 md:h-72">
-        <canvas id="dayPeopleChart"></canvas>
+
+      <!-- 每月签到人数 -->
+      <div class="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 md:p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-medium text-slate-100">
+            每月签到人数（去重，按有效签到统计）
+          </h2>
+        </div>
+        <div class="relative h-64 md:h-72">
+          <canvas id="monthlySignChart"></canvas>
+        </div>
+        <p class="mt-2 text-[11px] text-slate-500">
+          将每天有效访客人数按所在月份汇总，横轴为月份（YYYY-MM）。
+        </p>
       </div>
     </section>
 
-    <!-- 图表：某月某人来的天数 -->
+    <!-- 某周签到人员表格 -->
     <section class="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 md:p-5">
-      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
-        <h2 class="text-sm font-medium text-slate-100">
-          某月某人来的天数（去重天数，仅统计 MATCH）
-        </h2>
-        <div class="flex items-center gap-2">
-          <label for="monthSelect" class="text-xs text-slate-400">选择月份：</label>
-          <select
-            id="monthSelect"
-            class="text-xs md:text-sm rounded-xl border border-slate-700 bg-slate-900/80 px-3 py-1.5 focus:border-sky-500/70 outline-none">
-            <option value="">全部月份</option>
-          </select>
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+        <div>
+          <h2 class="text-sm font-medium text-slate-100">
+            某周签到人员表格
+          </h2>
+          <p class="mt-1 text-[11px] text-slate-500">
+            左侧为人员姓名，表头为周一至周日，单元格使用 ✓ / ✓(2) 表示当天是否签到及次数。
+          </p>
         </div>
-      </div>
-      <div class="relative h-64 md:h-72">
-        <canvas id="monthPersonChart"></canvas>
-      </div>
-      <p class="mt-2 text-[11px] text-slate-500">
-        选择某个月后，横轴是人员，纵轴是这个月内来过的天数（同一天内多次有效签到只算 1 天）。
-      </p>
-    </section>
-
-    <!-- 列表 + 筛选（原始记录） -->
-    <section class="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 md:p-5">
-      <!-- 筛选区 -->
-      <div class="flex flex-col md:flex-row md:items-center gap-3 mb-4">
-        <div class="flex-1">
-          <label class="block text-xs font-medium text-slate-400 mb-1">
-            搜索（姓名 / 状态 / 消息 / 图片路径）
+        <div class="flex items-center gap-2">
+          <label for="weekSelect" class="text-xs text-slate-400 whitespace-nowrap">
+            选择周：
           </label>
-          <div
-            class="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 focus-within:border-sky-500/70">
-            <span class="text-slate-500 text-sm">🔍</span>
-            <input
-              id="searchInput"
-              type="text"
-              placeholder="例如：张三 / MATCH / ERROR / NO_FACE"
-              class="w-full bg-transparent outline-none text-sm placeholder:text-slate-500" />
+          <select
+            id="weekSelect"
+            class="text-xs md:text-sm rounded-xl border border-slate-700 bg-slate-900/80 px-3 py-1.5 focus:border-sky-500/70 outline-none min-w-[200px]">
+            <option value="">暂无周数据</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="overflow-x-auto border border-slate-800 rounded-2xl">
+        <table class="min-w-full text-sm">
+          <thead class="bg-slate-900/80 border-b border-slate-800 text-slate-300">
+            <tr>
+              <th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide">姓名</th>
+              <th class="px-3 py-2 text-center text-xs font-medium uppercase tracking-wide">周一</th>
+              <th class="px-3 py-2 text-center text-xs font-medium uppercase tracking-wide">周二</th>
+              <th class="px-3 py-2 text-center text-xs font-medium uppercase tracking-wide">周三</th>
+              <th class="px-3 py-2 text-center text-xs font-medium uppercase tracking-wide">周四</th>
+              <th class="px-3 py-2 text-center text-xs font-medium uppercase tracking-wide">周五</th>
+              <th class="px-3 py-2 text-center text-xs font-medium uppercase tracking-wide">周六</th>
+              <th class="px-3 py-2 text-center text-xs font-medium uppercase tracking-wide">周日</th>
+            </tr>
+          </thead>
+          <tbody id="weekTableBody" class="divide-y divide-slate-800">
+            <!-- JS 动态填充 -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 最近签到记录（精简版日志） -->
+    <section class="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 md:p-5">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+        <h2 class="text-sm font-medium text-slate-100">
+          最近签到记录（简要）
+        </h2>
+        <div class="flex flex-col sm:flex-row gap-2 sm:items-center">
+          <div class="flex-1">
+            <label class="block text-xs font-medium text-slate-400 mb-1">
+              搜索（姓名 / 状态 / 图片路径）
+            </label>
+            <div
+              class="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 focus-within:border-sky-500/70">
+              <span class="text-slate-500 text-sm">🔍</span>
+              <input
+                id="searchInput"
+                type="text"
+                placeholder="例如：张三 / MATCH / ERROR / NO_FACE"
+                class="w-full bg-transparent outline-none text-sm placeholder:text-slate-500" />
+            </div>
+          </div>
+          <div class="w-full sm:w-44">
+            <label class="block text-xs font-medium text-slate-400 mb-1">
+              状态筛选
+            </label>
+            <select
+              id="statusFilter"
+              class="w-full text-sm rounded-xl border border-slate-700 bg-slate-900/80 px-3 py-2 focus:border-sky-500/70 outline-none">
+              <option value="">全部状态</option>
+              <option value="MATCH">MATCH</option>
+              <option value="ERROR">ERROR</option>
+              <option value="NO_FACE">NO_FACE</option>
+            </select>
           </div>
         </div>
-        <div class="w-full md:w-56">
-          <label class="block text-xs font-medium text-slate-400 mb-1">
-            状态筛选
-          </label>
-          <select
-            id="statusFilter"
-            class="w-full text-sm rounded-xl border border-slate-700 bg-slate-900/80 px-3 py-2 focus:border-sky-500/70 outline-none">
-            <option value="">全部状态</option>
-            <option value="MATCH">MATCH（有效记录）</option>
-            <option value="ERROR">ERROR</option>
-            <option value="NO_FACE">NO_FACE</option>
-          </select>
-        </div>
       </div>
 
-      <!-- 表格 -->
       <div class="overflow-x-auto border border-slate-800 rounded-2xl">
         <table class="min-w-full text-sm">
           <thead class="bg-slate-900/80 border-b border-slate-800 text-slate-300">
             <tr>
               <th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide">时间</th>
               <th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide">姓名</th>
-              <th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide">相似度</th>
-              <th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide">阈值</th>
               <th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide">状态</th>
               <th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide">图片路径</th>
-              <th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide">消息</th>
-              <th class="px-3 py-2 text-right text-xs font-medium uppercase tracking-wide">操作</th>
             </tr>
           </thead>
           <tbody id="tableBody" class="divide-y divide-slate-800"></tbody>
         </table>
       </div>
+
       <!-- 分页 -->
       <div
         class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mt-4 text-xs text-slate-400">
@@ -176,72 +196,6 @@
     </section>
   </div>
 
-  <!-- 详情弹窗 -->
-  <div
-    id="detailModal"
-    class="hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm items-center justify-center">
-    <div class="bg-slate-900/95 border border-slate-700 rounded-2xl max-w-3xl w-[95%] p-4 md:p-5">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-sm font-medium text-slate-100">识别详情</h2>
-        <button
-          id="detailClose"
-          class="w-8 h-8 inline-flex items-center justify-center rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm">
-          ✕
-        </button>
-      </div>
-
-      <div class="grid gap-4 md:grid-cols-3">
-        <div class="md:col-span-2">
-          <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs md:text-sm">
-            <div>
-              <dt class="text-slate-400">时间</dt>
-              <dd id="detailTimestamp" class="mt-1 text-slate-100 break-all"></dd>
-            </div>
-            <div>
-              <dt class="text-slate-400">状态</dt>
-              <dd id="detailStatus" class="mt-1 text-slate-100 break-all"></dd>
-            </div>
-            <div>
-              <dt class="text-slate-400">姓名</dt>
-              <dd id="detailMatchName" class="mt-1 text-slate-100 break-all"></dd>
-            </div>
-            <div>
-              <dt class="text-slate-400">相似度</dt>
-              <dd id="detailSimilarity" class="mt-1 text-slate-100 break-all"></dd>
-            </div>
-            <div>
-              <dt class="text-slate-400">阈值</dt>
-              <dd id="detailThreshold" class="mt-1 text-slate-100 break-all"></dd>
-            </div>
-            <div class="col-span-2">
-              <dt class="text-slate-400">消息</dt>
-              <dd id="detailMessage" class="mt-1 text-slate-100 break-all text-xs md:text-sm"></dd>
-            </div>
-          </dl>
-        </div>
-        <div>
-          <div class="text-xs text-slate-400 mb-1">抓拍图片</div>
-          <div
-            class="border border-slate-700 rounded-xl bg-slate-950 h-48 md:h-56 flex items-center justify-center overflow-hidden">
-            <img
-              id="detailImage"
-              src=""
-              alt="snapshot"
-              class="max-h-full max-w-full rounded-md hidden" />
-            <span
-              id="detailImagePlaceholder"
-              class="text-[11px] text-slate-500">
-              无图片路径或尚未配置访问
-            </span>
-          </div>
-          <p
-            id="detailImagePath"
-            class="mt-2 text-[11px] text-slate-500 break-all">
-          </p>
-        </div>
-      </div>
-    </div>
-  </div>
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
@@ -252,9 +206,14 @@
     let currentPageData = []
 
     let statsCache = null
-    let personDailyChart = null
-    let dayPeopleChart = null
-    let monthPersonChart = null
+    let weeklySignChart = null
+    let monthlySignChart = null
+
+    // 周 / 月 / 周签到表格 使用的衍生数据
+    let weekMeta = {}           // weekKey -> { startDate, endDate, label }
+    let weeklyPeopleData = []   // [{ weekKey, label, count }]
+    let monthlyPeopleData = []  // [{ month, count }]
+    let weeklyAttendance = {}   // weekKey -> { person -> { dateStr -> count } }
 
     // 防抖
     function debounce(fn, delay) {
@@ -265,7 +224,7 @@
       }
     }
 
-    // 状态徽章
+    // 状态徽章（日志用）
     function renderStatusBadge(status) {
       const base =
         'inline-flex items-center px-2 py-[2px] rounded-full text-[11px] font-medium border'
@@ -286,6 +245,374 @@
       }
     }
 
+    // 工具：根据 yyyy-mm-dd 计算“周一”的日期字符串作为 weekKey
+    function getWeekKey(dateStr) {
+      if (!dateStr) return ''
+      const parts = dateStr.split('-').map(Number)
+      if (parts.length < 3) return ''
+      const [y, m, d] = parts
+      const dt = new Date(y, m - 1, d)
+      const day = dt.getDay() // 0=周日,1=周一,...,6=周六
+      const offset = (day + 6) % 7 // 转成“周一=0”的偏移
+      dt.setDate(dt.getDate() - offset)
+      const yy = dt.getFullYear()
+      const mm = String(dt.getMonth() + 1).padStart(2, '0')
+      const dd = String(dt.getDate()).padStart(2, '0')
+      return `${yy}-${mm}-${dd}`
+    }
+
+    // 工具：在 yyyy-mm-dd 上加 days 天，返回新的 yyyy-mm-dd
+    function addDays(dateStr, days) {
+      const parts = dateStr.split('-').map(Number)
+      if (parts.length < 3) return dateStr
+      const [y, m, d] = parts
+      const dt = new Date(y, m - 1, d)
+      dt.setDate(dt.getDate() + days)
+      const yy = dt.getFullYear()
+      const mm = String(dt.getMonth() + 1).padStart(2, '0')
+      const dd = String(dt.getDate()).padStart(2, '0')
+      return `${yy}-${mm}-${dd}`
+    }
+
+    // 基于 statsCache 计算周 / 月统计 和 周签到表格数据
+    function buildDerivedFromStats() {
+      if (!statsCache) return
+
+      weekMeta = {}
+      weeklyPeopleData = []
+      monthlyPeopleData = []
+      weeklyAttendance = {}
+
+      const dayPeople = statsCache.day_people || []
+      const personDay = statsCache.person_day || []
+
+      const weeklyPeopleMap = {} // weekKey -> sum(people)
+      const monthlyMap = {}      // yyyy-mm -> sum(people)
+
+      // 1) 从每天有效访客人数 day_people 构造“周”和“月”的人数汇总
+      dayPeople.forEach((item) => {
+        const date = item.date || ''
+        const people = item.people || 0
+        if (!date) return
+
+        const weekKey = getWeekKey(date)
+        if (weekKey) {
+          if (!weeklyPeopleMap[weekKey]) {
+            weeklyPeopleMap[weekKey] = 0
+          }
+          weeklyPeopleMap[weekKey] += people
+
+          if (!weekMeta[weekKey]) {
+            const start = weekKey
+            const end = addDays(weekKey, 6)
+            weekMeta[weekKey] = {
+              startDate: start,
+              endDate: end,
+              label: `${start} ~ ${end}`,
+            }
+          }
+        }
+
+        const month = date.slice(0, 7)
+        if (month) {
+          if (!monthlyMap[month]) {
+            monthlyMap[month] = 0
+          }
+          monthlyMap[month] += people
+        }
+      })
+
+      weeklyPeopleData = Object.keys(weeklyPeopleMap)
+        .sort()
+        .map((weekKey) => ({
+          weekKey,
+          label: weekMeta[weekKey]?.label || weekKey,
+          count: weeklyPeopleMap[weekKey],
+        }))
+
+      monthlyPeopleData = Object.keys(monthlyMap)
+        .sort()
+        .map((month) => ({
+          month,
+          count: monthlyMap[month],
+        }))
+
+      // 2) 基于 person_day 构造“某周签到人员表格”数据
+      personDay.forEach((item) => {
+        const person = item.person || '未知'
+        const date = item.date || ''
+        const count = item.count || 0
+        if (!date || !person) return
+
+        const weekKey = getWeekKey(date)
+        if (!weekKey) return
+
+        if (!weekMeta[weekKey]) {
+          const start = weekKey
+          const end = addDays(weekKey, 6)
+          weekMeta[weekKey] = {
+            startDate: start,
+            endDate: end,
+            label: `${start} ~ ${end}`,
+          }
+        }
+
+        if (!weeklyAttendance[weekKey]) {
+          weeklyAttendance[weekKey] = {}
+        }
+        if (!weeklyAttendance[weekKey][person]) {
+          weeklyAttendance[weekKey][person] = {}
+        }
+
+        weeklyAttendance[weekKey][person][date] =
+          (weeklyAttendance[weekKey][person][date] || 0) + count
+      })
+    }
+
+    // 初始化 / 更新周选择下拉框
+    function initWeekSelect() {
+      const weekSelect = document.getElementById('weekSelect')
+      const weekKeys = Object.keys(weekMeta).sort()
+
+      if (weekKeys.length === 0) {
+        weekSelect.innerHTML = '<option value="">暂无周数据</option>'
+        return
+      }
+
+      weekSelect.innerHTML = ''
+      weekKeys.forEach((wk) => {
+        const opt = document.createElement('option')
+        opt.value = wk
+        opt.textContent = weekMeta[wk]?.label || wk
+        weekSelect.appendChild(opt)
+      })
+
+      // 默认选最后一周（最新）
+      weekSelect.value = weekKeys[weekKeys.length - 1]
+    }
+
+    // 图表：每周签到人数
+    function updateWeeklySignChart() {
+      const ctx = document.getElementById('weeklySignChart').getContext('2d')
+
+      if (!weeklyPeopleData || weeklyPeopleData.length === 0) {
+        if (weeklySignChart) weeklySignChart.destroy()
+        weeklySignChart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: [],
+            datasets: [
+              {
+                label: '暂无数据',
+                data: [],
+                borderWidth: 1.5,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { labels: { color: '#e5e7eb', font: { size: 11 } } },
+            },
+            scales: {
+              x: {
+                ticks: { color: '#9ca3af' },
+                grid: { display: false },
+              },
+              y: {
+                ticks: { color: '#9ca3af' },
+                grid: { color: 'rgba(55,65,81,0.5)' },
+                beginAtZero: true,
+              },
+            },
+          },
+        })
+        return
+      }
+
+      const labels = weeklyPeopleData.map((d) => d.label)
+      const counts = weeklyPeopleData.map((d) => d.count)
+
+      if (weeklySignChart) weeklySignChart.destroy()
+
+      weeklySignChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: '每周有效签到人数（去重）',
+              data: counts,
+              borderWidth: 1.5,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { labels: { color: '#e5e7eb', font: { size: 11 } } },
+          },
+          scales: {
+            x: {
+              ticks: { color: '#9ca3af', maxRotation: 45, minRotation: 0 },
+              grid: { display: false },
+            },
+            y: {
+              ticks: { color: '#9ca3af' },
+              grid: { color: 'rgba(55,65,81,0.5)' },
+              beginAtZero: true,
+            },
+          },
+        },
+      })
+    }
+
+    // 图表：每月签到人数
+    function updateMonthlySignChart() {
+      const ctx = document.getElementById('monthlySignChart').getContext('2d')
+
+      if (!monthlyPeopleData || monthlyPeopleData.length === 0) {
+        if (monthlySignChart) monthlySignChart.destroy()
+        monthlySignChart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: [],
+            datasets: [
+              {
+                label: '暂无数据',
+                data: [],
+                borderWidth: 1.5,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { labels: { color: '#e5e7eb', font: { size: 11 } } },
+            },
+            scales: {
+              x: {
+                ticks: { color: '#9ca3af' },
+                grid: { display: false },
+              },
+              y: {
+                ticks: { color: '#9ca3af' },
+                grid: { color: 'rgba(55,65,81,0.5)' },
+                beginAtZero: true,
+              },
+            },
+          },
+        })
+        return
+      }
+
+      const labels = monthlyPeopleData.map((d) => d.month)
+      const counts = monthlyPeopleData.map((d) => d.count)
+
+      if (monthlySignChart) monthlySignChart.destroy()
+
+      monthlySignChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: '每月有效签到人数（去重）',
+              data: counts,
+              borderWidth: 1.5,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { labels: { color: '#e5e7eb', font: { size: 11 } } },
+          },
+          scales: {
+            x: {
+              ticks: { color: '#9ca3af', maxRotation: 45, minRotation: 0 },
+              grid: { display: false },
+            },
+            y: {
+              ticks: { color: '#9ca3af' },
+              grid: { color: 'rgba(55,65,81,0.5)' },
+              beginAtZero: true,
+            },
+          },
+        },
+      })
+    }
+
+    // 渲染“某周签到人员表格”
+    function renderWeeklyTable() {
+      const tbody = document.getElementById('weekTableBody')
+      const weekSelect = document.getElementById('weekSelect')
+      const weekKey = weekSelect.value
+
+      tbody.innerHTML = ''
+
+      if (!weekKey || !weeklyAttendance[weekKey]) {
+        const tr = document.createElement('tr')
+        tr.innerHTML =
+          '<td colspan="8" class="px-3 py-4 text-center text-sm text-slate-500">该周暂无签到数据</td>'
+        tbody.appendChild(tr)
+        return
+      }
+
+      const persons = Object.keys(weeklyAttendance[weekKey]).sort()
+      if (persons.length === 0) {
+        const tr = document.createElement('tr')
+        tr.innerHTML =
+          '<td colspan="8" class="px-3 py-4 text-center text-sm text-slate-500">该周暂无签到数据</td>'
+        tbody.appendChild(tr)
+        return
+      }
+
+      persons.forEach((person) => {
+        const tr = document.createElement('tr')
+        tr.className = 'hover:bg-slate-800/60 transition-colors'
+        const cellHtml = []
+
+        // 姓名
+        cellHtml.push(
+          `<td class="px-3 py-2 whitespace-nowrap text-sm text-slate-100">${person}</td>`,
+        )
+
+        // 周一到周日
+        for (let i = 0; i < 7; i++) {
+          const dateStr = addDays(weekKey, i)
+          const count =
+            (weeklyAttendance[weekKey][person] &&
+              weeklyAttendance[weekKey][person][dateStr]) ||
+            0
+
+          if (count > 0) {
+            const text = count === 1 ? '✓' : `✓(${count})`
+            cellHtml.push(
+              `<td class="px-3 py-2 text-center text-xs">
+                <span class="inline-flex items-center justify-center px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/40">
+                  ${text}
+                </span>
+              </td>`,
+            )
+          } else {
+            cellHtml.push(
+              '<td class="px-3 py-2 text-center text-xs text-slate-500">—</td>',
+            )
+          }
+        }
+
+        tr.innerHTML = cellHtml.join('')
+        tbody.appendChild(tr)
+      })
+    }
+
     // 获取统计数据
     async function fetchStats() {
       try {
@@ -298,218 +625,20 @@
         document.getElementById('errorCount').textContent = stats.error ?? 0
         document.getElementById('noFaceCount').textContent = stats.no_face ?? 0
 
-        initFiltersFromStats()
-        updatePersonDailyChart()
-        updateDayPeopleChart()
-        updateMonthPersonChart()
+        // 构建周/月/周表格的衍生数据
+        buildDerivedFromStats()
+        // 初始化周下拉
+        initWeekSelect()
+        // 更新图表 与 周签到表格
+        updateWeeklySignChart()
+        updateMonthlySignChart()
+        renderWeeklyTable()
       } catch (e) {
         console.error('获取统计失败', e)
       }
     }
 
-    // 根据统计结果初始化“人员”和“月份”下拉框
-    function initFiltersFromStats() {
-      if (!statsCache) return
-
-      const personSelect = document.getElementById('personSelect')
-      const monthSelect = document.getElementById('monthSelect')
-
-      const personSet = new Set()
-      ;(statsCache.person_day || []).forEach((item) => {
-        if (item.person) personSet.add(item.person)
-      })
-
-      const monthSet = new Set()
-      ;(statsCache.month_person_days || statsCache.month_person || []).forEach((item) => {
-        if (item.month) monthSet.add(item.month)
-      })
-
-      // 人员
-      personSelect.innerHTML = '<option value="">全部人员（总次数）</option>'
-      Array.from(personSet)
-        .sort()
-        .forEach((name) => {
-          const opt = document.createElement('option')
-          opt.value = name
-          opt.textContent = name
-          personSelect.appendChild(opt)
-        })
-
-      // 月份
-      const months = Array.from(monthSet).sort()
-      monthSelect.innerHTML = '<option value="">全部月份</option>'
-      months.forEach((m) => {
-        const opt = document.createElement('option')
-        opt.value = m
-        opt.textContent = m
-        monthSelect.appendChild(opt)
-      })
-      if (months.length > 0) {
-        monthSelect.value = months[months.length - 1] // 默认选最新月份
-      }
-    }
-    // 图表1：某人某日来了几次
-    function updatePersonDailyChart() {
-      if (!statsCache) return
-
-      const person = document.getElementById('personSelect').value
-      const arr = statsCache.person_day || []
-
-      const map = {}
-      arr.forEach((item) => {
-        if (person && item.person !== person) return
-        const d = item.date || ''
-        if (!map[d]) map[d] = 0
-        map[d] += item.count || 0
-      })
-
-      const dates = Object.keys(map).sort()
-      const counts = dates.map((d) => map[d])
-
-      const ctx = document.getElementById('personDailyChart').getContext('2d')
-      if (personDailyChart) personDailyChart.destroy()
-
-      personDailyChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-          labels: dates,
-          datasets: [
-            {
-              label: person ? `有效签到次数 - ${person}` : '每天总有效签到次数',
-              data: counts,
-              borderWidth: 1,
-            },
-          ],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: {
-              labels: { color: '#e5e7eb', font: { size: 11 } },
-            },
-          },
-          scales: {
-            x: {
-              ticks: { color: '#9ca3af', maxRotation: 45, minRotation: 0 },
-              grid: { display: false },
-            },
-            y: {
-              ticks: { color: '#9ca3af' },
-              grid: { color: 'rgba(55,65,81,0.5)' },
-              beginAtZero: true,
-            },
-          },
-        },
-      })
-    }
-
-    // 图表2：某日有几个人来
-    function updateDayPeopleChart() {
-      if (!statsCache) return
-
-      const arr = statsCache.day_people || []
-      const sorted = arr.slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''))
-
-      const labels = sorted.map((i) => i.date || '')
-      const people = sorted.map((i) => i.people || 0)
-
-      const ctx = document.getElementById('dayPeopleChart').getContext('2d')
-      if (dayPeopleChart) dayPeopleChart.destroy()
-
-      dayPeopleChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels,
-          datasets: [
-            {
-              label: '每天有效访客人数（去重）',
-              data: people,
-              borderWidth: 1.5,
-            },
-          ],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          interaction: { mode: 'index', intersect: false },
-          plugins: {
-            legend: {
-              labels: { color: '#e5e7eb', font: { size: 11 } },
-            },
-          },
-          scales: {
-            x: {
-              ticks: { color: '#9ca3af', maxRotation: 45, minRotation: 0 },
-              grid: { display: false },
-            },
-            y: {
-              ticks: { color: '#9ca3af' },
-              grid: { color: 'rgba(55,65,81,0.5)' },
-              beginAtZero: true,
-            },
-          },
-        },
-      })
-    }
-
-    // 图表3：某月某人来的天数
-    function updateMonthPersonChart() {
-      if (!statsCache) return
-
-      const monthSelect = document.getElementById('monthSelect')
-      const month = monthSelect.value
-      const arr = statsCache.month_person_days || statsCache.month_person || []
-
-      const map = {}
-      arr.forEach((item) => {
-        if (month && item.month !== month) return
-        const p = item.person || '未知'
-        if (!map[p]) map[p] = 0
-        map[p] += item.days || 0
-      })
-
-      const persons = Object.keys(map).sort()
-      const days = persons.map((p) => map[p])
-
-      const ctx = document.getElementById('monthPersonChart').getContext('2d')
-      if (monthPersonChart) monthPersonChart.destroy()
-
-      monthPersonChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-          labels: persons,
-          datasets: [
-            {
-              label: month ? `${month} 出勤天数` : '出勤天数（所有月份合并）',
-              data: days,
-              borderWidth: 1,
-            },
-          ],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: {
-              labels: { color: '#e5e7eb', font: { size: 11 } },
-            },
-          },
-          scales: {
-            x: {
-              ticks: { color: '#9ca3af', maxRotation: 45, minRotation: 0 },
-              grid: { display: false },
-            },
-            y: {
-              ticks: { color: '#9ca3af' },
-              grid: { color: 'rgba(55,65,81,0.5)' },
-              beginAtZero: true,
-            },
-          },
-        },
-      })
-    }
-    // 列表数据（原始记录）
+    // 列表数据（简化版原始记录）
     async function fetchData() {
       const status = document.getElementById('statusFilter').value
       const q = document.getElementById('searchInput').value.trim()
@@ -538,12 +667,12 @@
       if (!rows || rows.length === 0) {
         const tr = document.createElement('tr')
         tr.innerHTML =
-          '<td colspan="8" class="px-3 py-4 text-center text-sm text-slate-500">暂无数据</td>'
+          '<td colspan="4" class="px-3 py-4 text-center text-sm text-slate-500">暂无数据</td>'
         tbody.appendChild(tr)
         return
       }
 
-      rows.forEach((rec, index) => {
+      rows.forEach((rec) => {
         const tr = document.createElement('tr')
         tr.className = 'hover:bg-slate-800/60 transition-colors'
         tr.innerHTML = `
@@ -553,12 +682,6 @@
           <td class="px-3 py-2 whitespace-nowrap text-sm">
             ${rec.match_name || '-'}
           </td>
-          <td class="px-3 py-2 whitespace-nowrap text-xs">
-            ${rec.similarity || '-'}
-          </td>
-          <td class="px-3 py-2 whitespace-nowrap text-xs text-slate-300">
-            ${rec.threshold || '-'}
-          </td>
           <td class="px-3 py-2 whitespace-nowrap">
             ${renderStatusBadge(rec.status)}
           </td>
@@ -566,19 +689,6 @@
             <div class="truncate text-slate-400">
               ${rec.image_path || ''}
             </div>
-          </td>
-          <td class="px-3 py-2 text-xs text-slate-300 max-w-sm">
-            <div>
-              ${rec.message || ''}
-            </div>
-          </td>
-          <td class="px-3 py-2 whitespace-nowrap text-right text-xs">
-            <button
-              type="button"
-              data-detail-idx="${index}"
-              class="inline-flex items-center px-2.5 py-1 rounded-lg bg-sky-500/10 text-sky-300 hover:bg-sky-500/20">
-              详情
-            </button>
           </td>
         `
         tbody.appendChild(tr)
@@ -601,42 +711,6 @@
       prevBtn.disabled = page <= 1
       nextBtn.disabled = page >= totalPages
     }
-    // 打开详情（图片通过 /image?path=ABS_PATH 来加载）
-    function openDetailModal(rec) {
-      document.getElementById('detailTimestamp').textContent = rec.timestamp || '-'
-      document.getElementById('detailStatus').textContent = rec.status || '(空)'
-      document.getElementById('detailMatchName').textContent = rec.match_name || '-'
-      document.getElementById('detailSimilarity').textContent = rec.similarity || '-'
-      document.getElementById('detailThreshold').textContent = rec.threshold || '-'
-      document.getElementById('detailMessage').textContent = rec.message || ''
-
-      const img = document.getElementById('detailImage')
-      const placeholder = document.getElementById('detailImagePlaceholder')
-      const pathEl = document.getElementById('detailImagePath')
-
-      if (rec.image_path) {
-        const url = '/image?path=' + encodeURIComponent(rec.image_path)
-        img.src = url
-        img.classList.remove('hidden')
-        placeholder.classList.add('hidden')
-        pathEl.textContent = rec.image_path
-      } else {
-        img.src = ''
-        img.classList.add('hidden')
-        placeholder.classList.remove('hidden')
-        pathEl.textContent = ''
-      }
-
-      const modal = document.getElementById('detailModal')
-      modal.classList.remove('hidden')
-      modal.classList.add('flex')
-    }
-
-    function closeDetailModal() {
-      const modal = document.getElementById('detailModal')
-      modal.classList.add('hidden')
-      modal.classList.remove('flex')
-    }
 
     document.addEventListener('DOMContentLoaded', () => {
       const searchInput = document.getElementById('searchInput')
@@ -644,11 +718,7 @@
       const prevPage = document.getElementById('prevPage')
       const nextPage = document.getElementById('nextPage')
       const refreshBtn = document.getElementById('refreshBtn')
-      const tableBody = document.getElementById('tableBody')
-      const detailClose = document.getElementById('detailClose')
-      const detailModal = document.getElementById('detailModal')
-      const personSelect = document.getElementById('personSelect')
-      const monthSelect = document.getElementById('monthSelect')
+      const weekSelect = document.getElementById('weekSelect')
 
       searchInput.addEventListener(
         'input',
@@ -682,33 +752,8 @@
         fetchData()
       })
 
-      personSelect.addEventListener('change', () => {
-        updatePersonDailyChart()
-      })
-
-      monthSelect.addEventListener('change', () => {
-        updateMonthPersonChart()
-      })
-
-      // 详情按钮事件
-      tableBody.addEventListener('click', (e) => {
-        const btn = e.target.closest('[data-detail-idx]')
-        if (!btn) return
-        const idx = parseInt(btn.getAttribute('data-detail-idx'), 10)
-        if (Number.isNaN(idx) || !currentPageData[idx]) return
-        openDetailModal(currentPageData[idx])
-      })
-
-      detailClose.addEventListener('click', closeDetailModal)
-      detailModal.addEventListener('click', (e) => {
-        if (e.target === detailModal) {
-          closeDetailModal()
-        }
-      })
-      document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-          closeDetailModal()
-        }
+      weekSelect.addEventListener('change', () => {
+        renderWeeklyTable()
       })
 
       // 首次加载
