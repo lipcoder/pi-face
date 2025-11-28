@@ -1,0 +1,19 @@
+[Unit]
+Description=Face Web Main Service
+After=face-docker.service
+Requires=face-docker.service
+
+[Service]
+Type=simple
+User=server
+WorkingDirectory=/home/server/project/face/web
+
+ExecStart=/home/server/project/face/web/main
+
+Restart=on-failure
+RestartSec=3
+
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+[Install]
+WantedBy=multi-user.target
