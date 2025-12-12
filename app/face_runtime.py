@@ -12,7 +12,6 @@ import inspireface as isf
 
 # ================== 路径 & 配置（统一走 app.config） ==================
 from app.config import (
-    UNKNOW_DIR as FACE_SAVE_DIR,
     FEATURE_DB_DIR,
     FEATURE_DB_PATH,
     LABEL_MAP_PATH,
@@ -23,16 +22,20 @@ from app.config import (
 )
 
 # 确保目录存在
-os.makedirs(FACE_SAVE_DIR, exist_ok=True)
 os.makedirs(FEATURE_DB_DIR, exist_ok=True)
 os.makedirs(LOG_DIR, exist_ok=True)
-
 
 # 是否显示调试窗口
 SHOW_WINDOW = False
 
 # 连续读取失败多少次后重建连接
 MAX_FRAME_FAILS = 5
+
+# ================== 性能开关（按需调整） ==================
+# 仅每 N 帧做一次检测 + 识别；其余帧直接跳过处理（不做“跟踪补帧”）
+DETECT_EVERY_N_FRAMES = 5  # 1=每帧都跑；建议 3~10 之间试
+# 是否写 CSV（仍然保留识别记录）；不写盘图片
+ENABLE_CSV_LOG = True
 
 # 全局：face_id -> label
 KNOWN_LABEL_MAP = {}
@@ -111,19 +114,7 @@ def crop_face_from_frame(frame, face):
     if x2 <= x1 or y2 <= y1:
         return None
 
-    return frame[y1:y2, x1:x2].copy()
-
-
-def save_face_image(face_img):
-    """
-    把截取的人脸图保存到 FACE_SAVE_DIR 下
-    返回保存路径（物理路径）
-    """
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    filename = f"{ts}.jpg"
-    save_path = os.path.join(FACE_SAVE_DIR, filename)
-    cv2.imwrite(save_path, face_img)
-    return save_path
+    return frame[y1:y2, x1:x2]
 
 
 def recognize_face(session, frame, face):
@@ -149,7 +140,6 @@ def recognize_face(session, frame, face):
     identity_id = int(result.similar_identity.id)
 
     is_match = confidence >= SEARCH_THRESHOLD
-
     label = KNOWN_LABEL_MAP.get(str(identity_id))
 
     return is_match, confidence, identity_id, label
@@ -157,30 +147,23 @@ def recognize_face(session, frame, face):
 
 # ================== 记录到 CSV ==================
 
-def log_to_csv(timestamp, image_path, label, confidence, status):
+def log_to_csv(timestamp, label, confidence, status):
     """
-    严格按格式写入：
-    2025-11-22 10:03:48,/data/unknow/20251122_100348_139706.jpg,name,0.721357,0.480000,MATCH,
+    写入 CSV（不再落盘图片，因此 image_path 为空）。
     """
-
-    # image_path 是物理路径，我们只在日志里写统一的逻辑路径 /data/unknow/xxx.jpg
-    filename = os.path.basename(image_path)
-    log_path = f"/data/unknow/{filename}"
-
-    # label 要的是「名字」，找不到就留空（你说不想要 id）
-    if not label:
-        label = ""
+    if not ENABLE_CSV_LOG:
+        return
 
     with open(RECORDS_CSV_PATH, "a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow([
-            timestamp,                      # 2025-11-22 10:03:48
-            log_path,                       # /data/unknow/xxx.jpg
-            label,                          # xue
-            f"{confidence:.6f}",            # 0.721357
-            f"{SEARCH_THRESHOLD:.6f}",      # 0.480000
-            status,                         # MATCH / UNKNOWN
-            "",                             # 最后一个空字段，对应末尾那个逗号
+            timestamp,
+            "",  # image_path 留空
+            label or "",
+            f"{confidence:.6f}",
+            f"{SEARCH_THRESHOLD:.6f}",
+            status,
+            "",
         ])
 
 
@@ -191,6 +174,7 @@ def main():
 
     cap = None
     fail_count = 0
+    frame_idx = 0
 
     try:
         while True:
@@ -228,6 +212,17 @@ def main():
             # 一旦成功读到帧，失败计数清零
             fail_count = 0
 
+            frame_idx += 1
+
+            # 降频：只在指定帧上做检测/识别
+            if DETECT_EVERY_N_FRAMES > 1 and (frame_idx % DETECT_EVERY_N_FRAMES != 0):
+                if SHOW_WINDOW:
+                    cv2.imshow("Face Runtime", frame)
+                    if cv2.waitKey(1) & 0xFF == ord('q'):
+                        break
+                continue
+
+            # 检测人脸
             faces = session.face_detection(frame)
             if not faces:
                 if SHOW_WINDOW:
@@ -236,46 +231,42 @@ def main():
                         break
                 continue
 
+            # 逐个识别
             for face in faces:
-                face_img = crop_face_from_frame(frame, face)
-                if face_img is None:
-                    continue
-
-                face_path = save_face_image(face_img)
-
                 is_match, conf, identity_id, label = recognize_face(session, frame, face)
 
                 ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 if is_match:
                     status = "MATCH"
-                    # 终端打印里可以带上 id，方便你调试；日志里只写名字
                     name_part = label if label else f"id={identity_id}"
-                    print(f"[{ts}] MATCH {name_part} id={identity_id} conf={conf:.3f} img={face_path}")
+                    print(f"[{ts}] MATCH {name_part} id={identity_id} conf={conf:.3f}")
                 else:
                     status = "UNKNOWN"
-                    print(f"[{ts}] UNKNOWN id={identity_id} conf={conf:.3f} img={face_path}")
+                    print(f"[{ts}] UNKNOWN id={identity_id} conf={conf:.3f}")
 
                 # 写入 CSV 日志
-                log_to_csv(
-                    timestamp=ts,
-                    image_path=face_path,
-                    label=label,
-                    confidence=conf,
-                    status=status,
-                )
+                log_to_csv(timestamp=ts, label=label, confidence=conf, status=status)
 
+                # 画框显示（可选）
                 if SHOW_WINDOW:
                     x1, y1, x2, y2 = map(int, face.location)
                     cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                     txt = label if label else f"id={identity_id}"
                     label_txt = f"{txt} {conf:.2f}"
-                    cv2.putText(frame, label_txt, (x1, max(0, y1 - 5)),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                    cv2.putText(
+                        frame,
+                        label_txt,
+                        (x1, max(0, y1 - 5)),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        (255, 255, 255),
+                        1
+                    )
 
             if SHOW_WINDOW:
                 cv2.imshow("Face Runtime", frame)
                 if cv2.waitKey(1) & 0xFF == ord('q'):
-                    return
+                    break
 
     finally:
         if cap is not None:
