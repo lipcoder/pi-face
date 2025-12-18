@@ -45,3 +45,6 @@ HIK_CHANNEL_SUB = os.environ.get("HIK_CHANNEL_SUB", "Streaming/Channels/102")
 
 HTTP_HOST = os.environ.get("HTTP_HOST", "0.0.0.0")
 HTTP_PORT = int(os.environ.get("HTTP_PORT", "5000"))
+
+# ========== 海康摄像头拉取帧 日志路径 =======================
+LOG_PATH = os.environ.get("LOG_PATH", os.path.join(LOG_DIR, "1.txt"))
