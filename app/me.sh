@@ -7,3 +7,6 @@ for so in paths:
     subprocess.check_call(["patchelf", "--clear-execstack", so])
     print("patched:", so)
 PY
+
+# 使用这个包来向板子发
+pip install pyserial 
