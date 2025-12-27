@@ -1,33 +1,37 @@
 package main
 
 import (
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
-// 单条日志记录
+// 单条日志记录（严格使用当前 records.csv 格式：无表头、5 列）
+// [0]=timestamp, [1]=match_name, [2]=similarity, [3]=threshold, [4]=status
 type Record struct {
 	ID         int    `json:"id"`
 	Timestamp  string `json:"timestamp"`
-	ImagePath  string `json:"image_path"`
 	MatchName  string `json:"match_name"`
 	Similarity string `json:"similarity"`
 	Threshold  string `json:"threshold"`
 	Status     string `json:"status"`
-	Message    string `json:"message"`
 }
 
-// 某人某日来了几次（现在按“同一人同一天只算一次”，Count 固定为 1）
+// 某人某日来了几次（按“同一人同一天只算一次”，Count 固定为 1）
 type PersonDayCount struct {
 	Person string `json:"person"`
 	Date   string `json:"date"`
@@ -47,7 +51,8 @@ type MonthPersonDays struct {
 	Days   int    `json:"days"`
 }
 
-// /api/stats 返回体
+// /api/stats 返回体（保持你前端 app.js 当前使用的字段：person_day、all_persons）
+// 其中 person_day 是按人+日去重后的签到记录。
 type StatsResponse struct {
 	Total        int               `json:"total"`             // 原始总记录数
 	MatchRaw     int               `json:"match_raw"`         // status=MATCH 的原始记录数（未去重）
@@ -58,7 +63,7 @@ type StatsResponse struct {
 	PersonDay    []PersonDayCount  `json:"person_day"`        // 某人某日是否签到（一天只算一次）
 	DayPeople    []DayPeopleCount  `json:"day_people"`        // 某日有几个人来（人数去重）
 	MonthPerson  []MonthPersonDays `json:"month_person_days"` // 某月某人来的天数（天数去重）
-	AllPersons   []string          `json:"all_persons"`       // 所有人员姓名（来自 label_map.json）
+	AllPersons   []string          `json:"all_persons"`       // 所有人员姓名（来自 label_map.json；若读取失败则为空）
 	LabelMap     map[string]string `json:"label_map"`         // ID -> 姓名，对应 label_map.json
 }
 
@@ -69,12 +74,127 @@ var (
 	staticDir    string // 前端静态资源目录，默认 ./static
 )
 
+// ==========================
+// 后端运行日志：写入 dataDir/logs/2.txt
+// 格式：YYYY-MM-DD HH:MM:SS [INFO] message
+// ==========================
+
+var logFile *os.File
+
+func initLogger(dataDir string) (string, error) {
+	logDir := filepath.Join(dataDir, "logs")
+	if err := os.MkdirAll(logDir, 0o755); err != nil {
+		return "", err
+	}
+
+	logPath := filepath.Join(logDir, "2.txt")
+	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return "", err
+	}
+	logFile = f
+
+	// 关闭 Go 默认前缀（避免重复时间戳）
+	log.SetFlags(0)
+	log.SetOutput(f)
+	return logPath, nil
+}
+
+func closeLogger() {
+	if logFile != nil {
+		_ = logFile.Close()
+	}
+}
+
+func logLine(level, msg string) {
+	ts := time.Now().Format("2006-01-02 15:04:05")
+	log.Printf("%s [%s] %s", ts, level, msg)
+}
+
+func logInfo(msg string)  { logLine("INFO", msg) }
+func logError(msg string) { logLine("ERROR", msg) }
+
+func logInfof(format string, args ...any) {
+	logLine("INFO", fmt.Sprintf(format, args...))
+}
+
+func logErrorf(format string, args ...any) {
+	logLine("ERROR", fmt.Sprintf(format, args...))
+}
+
+func logSep() {
+	logInfo("===========================================================")
+}
+
+// ==========================
+// API 访问日志（含来源 IP、状态码、耗时）
+// ==========================
+
+func clientIP(r *http.Request) string {
+	xff := strings.TrimSpace(r.Header.Get("X-Forwarded-For"))
+	if xff != "" {
+		parts := strings.Split(xff, ",")
+		if len(parts) > 0 {
+			ip := strings.TrimSpace(parts[0])
+			if ip != "" {
+				return ip
+			}
+		}
+	}
+	xri := strings.TrimSpace(r.Header.Get("X-Real-IP"))
+	if xri != "" {
+		return xri
+	}
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err == nil && host != "" {
+		return host
+	}
+	return r.RemoteAddr
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (sr *statusRecorder) WriteHeader(code int) {
+	sr.status = code
+	sr.ResponseWriter.WriteHeader(code)
+}
+
+// 日志中间件
+func loggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		sr := &statusRecorder{ResponseWriter: w, status: 200}
+
+		ip := clientIP(r)
+
+		next.ServeHTTP(sr, r)
+
+		cost := time.Since(start).Milliseconds()
+		logInfof("API ip=%s %s %s status=%d cost=%dms ua=%q",
+			ip, r.Method, r.URL.Path, sr.status, cost, r.UserAgent())
+	})
+}
+
 func main() {
 	// 统一集中配置所有路径，方便迁移修改
 	dataDir = os.Getenv("DATA_DIR")
 	if dataDir == "" {
 		dataDir = "../data"
 	}
+
+	// 初始化运行日志到 dataDir/logs/2.txt
+	logPath, err := initLogger(dataDir)
+	if err != nil {
+		// 如果连日志文件都打不开，退回 stdout（但仍尽量启动）
+		log.SetFlags(0)
+		log.Printf("logger init failed: %v", err)
+	} else {
+		logInfof("log file: %s", logPath)
+	}
+	defer closeLogger()
 
 	// 日志 CSV 路径，默认 dataDir/logs/records.csv，可用 RECORDS_CSV_PATH 覆盖
 	csvPath = os.Getenv("RECORDS_CSV_PATH")
@@ -94,10 +214,12 @@ func main() {
 		staticDir = "./static"
 	}
 
-	log.Printf("使用 data 目录: %s", dataDir)
-	log.Printf("使用日志文件: %s", csvPath)
-	log.Printf("使用 label_map: %s", labelMapPath)
-	log.Printf("使用静态目录: %s", staticDir)
+	logSep()
+	logInfof("使用 data 目录: %s", dataDir)
+	logInfof("使用 CSV 日志: %s", csvPath)
+	logInfof("使用 label_map: %s", labelMapPath)
+	logInfof("使用静态目录: %s", staticDir)
+	logSep()
 
 	mux := http.NewServeMux()
 
@@ -112,21 +234,43 @@ func main() {
 	// 图片预览：/image?path=unknow/xxx.jpg （相对于 dataDir）
 	mux.HandleFunc("/image", handleImage)
 
-	log.Println("服务启动成功：http://0.0.0.0:8080")
-	if err := http.ListenAndServe(":8080", loggingMiddleware(mux)); err != nil {
-		log.Fatal(err)
+	srv := &http.Server{
+		Addr:    ":8080",
+		Handler: loggingMiddleware(mux),
 	}
-}
 
-// 日志中间件
-func loggingMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s %s %s", r.RemoteAddr, r.Method, r.URL.Path)
-		next.ServeHTTP(w, r)
-	})
+	// 捕获 SIGINT/SIGTERM，记录关闭日志
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		logSep()
+		logInfo("服务启动成功：http://0.0.0.0:8080")
+		logSep()
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logErrorf("server listen error: %v", err)
+		}
+	}()
+
+	sig := <-stop
+	logSep()
+	logInfof("收到关闭信号: %s", sig.String())
+	logInfo("开始优雅关闭服务...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		logErrorf("优雅关闭失败: %v", err)
+	} else {
+		logInfo("服务已关闭")
+	}
+	logSep()
 }
 
 // 每次请求重新读取 CSV，保证看到最新记录
+// 严格要求：无表头、且每行必须恰好 5 列（多/少都跳过）
+// [0]=timestamp, [1]=match_name, [2]=similarity, [3]=threshold, [4]=status
 func loadRecordsFromCSV(path string) ([]Record, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -135,6 +279,8 @@ func loadRecordsFromCSV(path string) ([]Record, error) {
 	defer f.Close()
 
 	reader := csv.NewReader(f)
+	reader.FieldsPerRecord = -1
+
 	var result []Record
 	id := 1
 
@@ -147,37 +293,19 @@ func loadRecordsFromCSV(path string) ([]Record, error) {
 			return nil, err
 		}
 
-		// 兼容两种日志格式：
-		// 1) 新格式（你当前的 CSV）：
-		//    [0]=timestamp, [1]=match_name, [2]=similarity, [3]=threshold, [4]=status
-		// 2) 旧格式（历史兼容）：
-		//    [0]=timestamp, [1]=image_path, [2]=match_name, [3]=similarity, [4]=threshold, [5]=status, [6]=message(可选)
-		if len(row) < 5 {
+		// 严格：只接受 5 列
+		if len(row) != 5 {
 			continue
 		}
 
-		rec := Record{ID: id}
-
-		switch {
-		case len(row) == 5:
-			rec.Timestamp = strings.TrimSpace(row[0])
-			rec.ImagePath = "" // 新格式不再提供图片路径
-			rec.MatchName = strings.TrimSpace(row[1])
-			rec.Similarity = strings.TrimSpace(row[2])
-			rec.Threshold = strings.TrimSpace(row[3])
-			rec.Status = strings.TrimSpace(row[4])
-		default: // len(row) >= 6
-			rec.Timestamp = strings.TrimSpace(row[0])
-			rec.ImagePath = strings.TrimSpace(row[1])
-			rec.MatchName = strings.TrimSpace(row[2])
-			rec.Similarity = strings.TrimSpace(row[3])
-			rec.Threshold = strings.TrimSpace(row[4])
-			rec.Status = strings.TrimSpace(row[5])
-			if len(row) >= 7 {
-				rec.Message = strings.TrimSpace(row[6])
-			}
+		rec := Record{
+			ID:         id,
+			Timestamp:  strings.TrimSpace(row[0]),
+			MatchName:  strings.TrimSpace(row[1]),
+			Similarity: strings.TrimSpace(row[2]),
+			Threshold:  strings.TrimSpace(row[3]),
+			Status:     strings.TrimSpace(row[4]),
 		}
-
 		result = append(result, rec)
 		id++
 	}
@@ -206,7 +334,7 @@ func handleRecords(w http.ResponseWriter, r *http.Request) {
 
 	records, err := loadRecordsFromCSV(csvPath)
 	if err != nil {
-		log.Printf("读取 CSV 失败: %v", err)
+		logErrorf("读取 CSV 失败: %v", err)
 		resp := struct {
 			Data     []Record `json:"data"`
 			Total    int      `json:"total"`
@@ -231,6 +359,9 @@ func handleRecords(w http.ResponseWriter, r *http.Request) {
 	if pageSize <= 0 {
 		pageSize = 20
 	}
+	if pageSize > 500 {
+		pageSize = 500
+	}
 
 	// 过滤条件
 	statusFilter := strings.TrimSpace(r.URL.Query().Get("status"))
@@ -245,12 +376,9 @@ func handleRecords(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// 模糊搜索（仍然支持按图片路径搜，但前端不展示路径）
+		// 模糊搜索（按姓名/状态）
 		if search != "" {
-			if !containsFold(rec.MatchName, search) &&
-				!containsFold(rec.ImagePath, search) &&
-				!containsFold(rec.Message, search) &&
-				!containsFold(rec.Status, search) {
+			if !containsFold(rec.MatchName, search) && !containsFold(rec.Status, search) {
 				continue
 			}
 		}
@@ -311,7 +439,7 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 
 	records, err := loadRecordsFromCSV(csvPath)
 	if err != nil {
-		log.Printf("读取 CSV 失败: %v", err)
+		logErrorf("读取 CSV 失败: %v", err)
 		_ = json.NewEncoder(w).Encode(StatsResponse{})
 		return
 	}
@@ -341,7 +469,6 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 			rawName := strings.TrimSpace(rec.MatchName)
 			upperName := strings.ToUpper(rawName)
 			if rawName == "" || upperName == "UNKNOWN" || upperName == "NO_FACE" {
-				// 这种视为“无真实人名”：只计入 MatchRaw，不参与后面的按人统计
 				continue
 			}
 			person := rawName
@@ -349,17 +476,13 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 			date := t.Format("2006-01-02")
 			month := t.Format("2006-01")
 
-			// 初始化 personDaySet
 			if _, ok := personDaySet[person]; !ok {
 				personDaySet[person] = make(map[string]struct{})
 			}
-
-			// 如果这个人这一天已经算过，就直接跳过（一天只算一次签到）
 			if _, exists := personDaySet[person][date]; exists {
 				continue
 			}
 
-			// 第一次在这一天签到：计入各种统计
 			personDaySet[person][date] = struct{}{}
 			stats.Valid++
 
@@ -387,7 +510,6 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 展开 personDaySet -> PersonDay（Count 固定为 1，表示这天来过）
 	for person, daySet := range personDaySet {
 		for date := range daySet {
 			stats.PersonDay = append(stats.PersonDay, PersonDayCount{
@@ -398,7 +520,6 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 展开 dayPeopleSet
 	for date, set := range dayPeopleSet {
 		stats.DayPeople = append(stats.DayPeople, DayPeopleCount{
 			Date:   date,
@@ -406,7 +527,6 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	// 展开 monthPersonDaysSet
 	for month, personSet := range monthPersonDaysSet {
 		for person, daySet := range personSet {
 			stats.MonthPerson = append(stats.MonthPerson, MonthPersonDays{
@@ -417,7 +537,6 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 排序，方便前端展示
 	sort.Slice(stats.PersonDay, func(i, j int) bool {
 		if stats.PersonDay[i].Person == stats.PersonDay[j].Person {
 			return stats.PersonDay[i].Date < stats.PersonDay[j].Date
@@ -436,35 +555,26 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 		return stats.MonthPerson[i].Month < stats.MonthPerson[j].Month
 	})
 
-	// 读取 label_map.json，填充 AllPersons 和 LabelMap，方便前端展示所有人员
-	if labelMapPath != "" {
-		if labelMap, err := loadLabelMap(labelMapPath); err != nil {
-			log.Printf("读取 label_map 失败: %v", err)
-		} else {
-			stats.LabelMap = labelMap
-
-			nameSet := make(map[string]struct{})
-			// 先把 label_map 里的姓名都加进去
-			for _, name := range labelMap {
-				n := strings.TrimSpace(name)
-				if n == "" {
-					continue
-				}
-				nameSet[n] = struct{}{}
+	// 读取 label_map.json（可选）：如果失败，不阻断接口
+	if labelMap, err := loadLabelMap(labelMapPath); err == nil {
+		stats.LabelMap = labelMap
+		nameSet := make(map[string]struct{})
+		for _, name := range labelMap {
+			n := strings.TrimSpace(name)
+			if n == "" {
+				continue
 			}
-			// 再把日志中出现过的姓名也补充进去（容错）
-			for _, pd := range stats.PersonDay {
-				n := strings.TrimSpace(pd.Person)
-				if n == "" {
-					continue
-				}
-				nameSet[n] = struct{}{}
-			}
-			for name := range nameSet {
-				stats.AllPersons = append(stats.AllPersons, name)
-			}
-			sort.Strings(stats.AllPersons)
+			nameSet[n] = struct{}{}
 		}
+		for name := range nameSet {
+			stats.AllPersons = append(stats.AllPersons, name)
+		}
+		sort.Strings(stats.AllPersons)
+	} else {
+		// 不报错给前端，但记录到 2.txt
+		logErrorf("读取 label_map 失败: %v", err)
+		stats.AllPersons = []string{}
+		stats.LabelMap = map[string]string{}
 	}
 
 	if err := json.NewEncoder(w).Encode(stats); err != nil {
@@ -488,7 +598,6 @@ func handleImage(w http.ResponseWriter, r *http.Request) {
 	}
 	defer f.Close()
 
-	// 简单按扩展名设置 Content-Type
 	switch strings.ToLower(filepath.Ext(fullPath)) {
 	case ".jpg", ".jpeg":
 		w.Header().Set("Content-Type", "image/jpeg")
@@ -520,7 +629,6 @@ func containsFold(s, substr string) bool {
 	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
 
-// 尝试解析各种常见时间格式
 func parseTimestamp(ts string) (time.Time, error) {
 	ts = strings.TrimSpace(ts)
 	if ts == "" {
@@ -537,7 +645,6 @@ func parseTimestamp(ts string) (time.Time, error) {
 		"2006/01/02",
 	}
 
-	// 先直接尝试
 	for _, layout := range layouts {
 		if t, err := time.Parse(layout, ts); err == nil {
 			return t, nil
