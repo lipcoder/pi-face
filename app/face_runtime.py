@@ -31,10 +31,6 @@ from app.config import (
     RTSP_FREEZE_MAX_FRAMES,
 )
 
-# =========================================================
-# 日志系统（唯一输出）
-# =========================================================
-
 os.makedirs(LOG_DIR, exist_ok=True)
 LOG_FILE = os.path.join(LOG_DIR, "1.txt")
 
@@ -55,25 +51,18 @@ if not logger.handlers:
     ))
     logger.addHandler(handler)
 
-# =========================================================
-# OpenCV / FFmpeg RTSP 设置
-# =========================================================
 
+# OpenCV / FFmpeg RTSP 设置
 os.environ.setdefault(
     "OPENCV_FFMPEG_CAPTURE_OPTIONS",
     "rtsp_transport;tcp|stimeout;5000000|max_delay;500000"
 )
 
-# =========================================================
-# 全局状态
-# =========================================================
 
+# 全局状态
 KNOWN_LABEL_MAP = {}
 SEP_LINE = "=" * 59  # 日志分隔线长度固定，方便目视
 
-# =========================================================
-# 工具函数
-# =========================================================
 
 def log_block(title: str):
     """
@@ -143,9 +132,6 @@ def log_to_csv(ts, label, confidence, status):
             status,
         ])
 
-# =========================================================
-# InspireFace 初始化
-# =========================================================
 
 def init_inspireface():
     log_block("InspireFace initialization started")
@@ -180,9 +166,6 @@ def init_inspireface():
     log_block("InspireFace initialization completed")
     return session
 
-# =========================================================
-# 主流程
-# =========================================================
 
 def main():
     log_block("face_runtime process starting")
