@@ -74,11 +74,8 @@ var (
 	staticDir    string // 前端静态资源目录，默认 ./static
 )
 
-// ==========================
-// 后端运行日志：写入 dataDir/logs/2.txt
-// 格式：YYYY-MM-DD HH:MM:SS [INFO] message
-// ==========================
 
+// 格式：YYYY-MM-DD HH:MM:SS [INFO] message
 var logFile *os.File
 
 func initLogger(dataDir string) (string, error) {
@@ -94,7 +91,6 @@ func initLogger(dataDir string) (string, error) {
 	}
 	logFile = f
 
-	// 关闭 Go 默认前缀（避免重复时间戳）
 	log.SetFlags(0)
 	log.SetOutput(f)
 	return logPath, nil
@@ -126,10 +122,8 @@ func logSep() {
 	logInfo("===========================================================")
 }
 
-// ==========================
-// API 访问日志（含来源 IP、状态码、耗时）
-// ==========================
 
+// API 访问日志（含来源 IP、状态码、耗时）
 func clientIP(r *http.Request) string {
 	xff := strings.TrimSpace(r.Header.Get("X-Forwarded-For"))
 	if xff != "" {
