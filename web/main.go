@@ -173,16 +173,13 @@ func loggingMiddleware(next http.Handler) http.Handler {
 }
 
 func main() {
-	// 统一集中配置所有路径，方便迁移修改
 	dataDir = os.Getenv("DATA_DIR")
 	if dataDir == "" {
 		dataDir = "../data"
 	}
 
-	// 初始化运行日志到 dataDir/logs/2.txt
 	logPath, err := initLogger(dataDir)
 	if err != nil {
-		// 如果连日志文件都打不开，退回 stdout（但仍尽量启动）
 		log.SetFlags(0)
 		log.Printf("logger init failed: %v", err)
 	} else {
@@ -190,19 +187,16 @@ func main() {
 	}
 	defer closeLogger()
 
-	// 日志 CSV 路径，默认 dataDir/logs/records.csv，可用 RECORDS_CSV_PATH 覆盖
 	csvPath = os.Getenv("RECORDS_CSV_PATH")
 	if csvPath == "" {
 		csvPath = filepath.Join(dataDir, "logs", "records.csv")
 	}
 
-	// 人员名字映射文件，默认 dataDir/feature_db/label_map.json，可用 LABEL_MAP_PATH 覆盖
 	labelMapPath = os.Getenv("LABEL_MAP_PATH")
 	if labelMapPath == "" {
 		labelMapPath = filepath.Join(dataDir, "feature_db", "label_map.json")
 	}
 
-	// 前端静态资源目录，默认 ./static，可用 STATIC_DIR 覆盖
 	staticDir = os.Getenv("STATIC_DIR")
 	if staticDir == "" {
 		staticDir = "./static"
@@ -384,8 +378,6 @@ func handleRecords(w http.ResponseWriter, r *http.Request) {
 	sort.Slice(filtered, func(i, j int) bool {
 		ti, err1 := parseTimestamp(filtered[i].Timestamp)
 		tj, err2 := parseTimestamp(filtered[j].Timestamp)
-
-		// 解析失败的，放在比较后面
 		if err1 != nil && err2 != nil {
 			return filtered[i].ID > filtered[j].ID
 		}
@@ -395,8 +387,6 @@ func handleRecords(w http.ResponseWriter, r *http.Request) {
 		if err2 != nil {
 			return true
 		}
-
-		// 最新时间排在前面
 		return ti.After(tj)
 	})
 
