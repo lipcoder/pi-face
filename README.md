@@ -24,32 +24,22 @@ Pi-Face 是一个基于 **InspireFace**
    - `dockerfile`：多阶段构建 Go + Python
    - `entrypoint.sh`：同时启动三个服务
 
-## 2. 数据目录结构
 
-/data
-├── know/
-├── feature_db/
-│   ├── feature_hub.db
-│   └── label_map.json
-└── logs/
-    └── records.csv
-    └── 1.txt
+## 2. Python 端
 
-## 3. Python 端
-
-### 3.1 配置（config.py）
+### 2.1 配置（config.py）
 
 支持环境变量覆盖，如 `DATA_ROOT`、RTSP
 配置、`SEARCH_THRESHOLD`、`VIDEO_SOURCE` 等。
 
-### 3.2 build_feature_db.py
+### 2.2 build_feature_db.py
 
 - 从 `know/` 读取图片
 - 文件名作为人名
 - 增量更新特征库（已有的 label 自动跳过）
 - 输出 `feature_hub.db` + `label_map.json`
 
-### 3.3 face_runtime.py
+### 2.3 face_runtime.py
 
 - 从 MJPEG 视频流取帧
 - 检测 → 特征提取 → 搜索最近邻
@@ -57,27 +47,31 @@ Pi-Face 是一个基于 **InspireFace**
 - 写入 CSV 日志，包含：时间、图片路径、姓名、相似度、阈值、状态等
 - 自动处理掉线、自动重连
 
-## 4. Web 看板（Go）
+## 3. Web 看板（Go）
 
-### 4.1 API
+### 3.1 API
 
 - `/api/records`（搜索、筛选、分页、时间倒序）
 - `/api/stats`基于 MATCH 统计：
   - 每周签到人员的表格
 - `/image?path=...` 访问抓拍图片（带路径安全检查）
 
-### 4.2 前端
+### 3.2 前端
 
 Tailwind + Chart.js，无需构建。
 包含图表、统计面板、记录表格、详情弹窗。
 
-## 5. 使用方法
+## 4. 使用方法
 
-### 5.1 Docker（推荐）
+### 4.1 Docker（推荐）
 
 创建：
 
-docker compose up --build启动：
+```docker compose up --build
+docker compose up --build
+```
+
+启动：
 
 ```docker run -it --rm   -v ./data:/data   face-runtime
 docker run -it --rm   -v ./data:/data   face-runtime
