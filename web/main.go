@@ -147,20 +147,35 @@ func loadRecordsFromCSV(path string) ([]Record, error) {
 			return nil, err
 		}
 
-		// 根据你实际的列顺序调整下标
-		if len(row) < 6 {
+		// 兼容两种日志格式：
+		// 1) 新格式（你当前的 CSV）：
+		//    [0]=timestamp, [1]=match_name, [2]=similarity, [3]=threshold, [4]=status
+		// 2) 旧格式（历史兼容）：
+		//    [0]=timestamp, [1]=image_path, [2]=match_name, [3]=similarity, [4]=threshold, [5]=status, [6]=message(可选)
+		if len(row) < 5 {
 			continue
 		}
 
-		rec := Record{
-			ID:         id,
-			Timestamp:  strings.TrimSpace(row[0]),
-			ImagePath:  strings.TrimSpace(row[1]),
-			MatchName:  strings.TrimSpace(row[2]),
-			Similarity: strings.TrimSpace(row[3]),
-			Threshold:  strings.TrimSpace(row[4]),
-			Status:     strings.TrimSpace(row[5]),
-			// Message: row[6] 如果有第 7 列的话
+		rec := Record{ID: id}
+
+		switch {
+		case len(row) == 5:
+			rec.Timestamp = strings.TrimSpace(row[0])
+			rec.ImagePath = "" // 新格式不再提供图片路径
+			rec.MatchName = strings.TrimSpace(row[1])
+			rec.Similarity = strings.TrimSpace(row[2])
+			rec.Threshold = strings.TrimSpace(row[3])
+			rec.Status = strings.TrimSpace(row[4])
+		default: // len(row) >= 6
+			rec.Timestamp = strings.TrimSpace(row[0])
+			rec.ImagePath = strings.TrimSpace(row[1])
+			rec.MatchName = strings.TrimSpace(row[2])
+			rec.Similarity = strings.TrimSpace(row[3])
+			rec.Threshold = strings.TrimSpace(row[4])
+			rec.Status = strings.TrimSpace(row[5])
+			if len(row) >= 7 {
+				rec.Message = strings.TrimSpace(row[6])
+			}
 		}
 
 		result = append(result, rec)

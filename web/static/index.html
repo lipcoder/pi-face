@@ -7,202 +7,73 @@
 
   <!-- Tailwind CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
-
-  <!-- 自定义样式 -->
-  <link rel="stylesheet" href="app.css" />
 </head>
-<body class="min-h-screen bg-slate-950 text-slate-100">
-  <div class="max-w-7xl mx-auto px-4 py-6 space-y-6">
+
+<body class="min-h-screen bg-slate-50 text-slate-900">
+  <div class="max-w-7xl mx-auto px-4 py-8 space-y-6">
     <!-- 顶部标题 -->
-    <header class="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+    <header class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
       <div>
-        <h1 class="text-3xl font-semibold tracking-tight">
-          人脸识别签到看板
-        </h1>
-        <p class="text-sm text-slate-400 mt-1">
-          仅统计 <code>status = MATCH</code> 的记录，并按「同一人同一天只算一次」合并为有效签到。
+        <h1 class="text-2xl md:text-3xl font-semibold tracking-tight">人脸识别签到看板</h1>
+        <p class="text-sm text-slate-600 mt-1">
+          仅保留「某周签到人员表格」。规则：<span class="font-medium">同一人同一天只算一次</span>。
         </p>
       </div>
-      <div class="flex items-center gap-3">
+
+      <div class="flex items-center gap-2">
         <button
           id="refreshBtn"
-          class="inline-flex items-center justify-center px-4 py-2 rounded-xl text-sm font-medium bg-sky-500 hover:bg-sky-400 text-slate-950 shadow-lg shadow-sky-900/40 transition">
+          class="inline-flex items-center justify-center px-4 py-2 rounded-xl text-sm font-medium bg-slate-900 text-white hover:bg-slate-800 shadow-sm transition">
           刷新数据
         </button>
       </div>
     </header>
 
-    <!-- 概览卡片 -->
-    <section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
-        <div class="text-xs font-medium text-slate-400">原始总记录数（含异常）</div>
-        <div id="totalCount" class="mt-2 text-2xl font-semibold">-</div>
-      </div>
-      <div class="rounded-2xl border border-emerald-500/40 bg-slate-900/70 p-4">
-        <div class="text-xs font-medium text-emerald-300">
-          有效签到（同一人同一天去重）
-        </div>
-        <div id="validCount" class="mt-2 text-2xl font-semibold text-emerald-300">-</div>
-      </div>
-      <div class="rounded-2xl border border-rose-500/40 bg-slate-900/70 p-4">
-        <div class="text-xs font-medium text-rose-300">ERROR 记录数</div>
-        <div id="errorCount" class="mt-2 text-2xl font-semibold text-rose-300">-</div>
-      </div>
-      <div class="rounded-2xl border border-amber-500/40 bg-slate-900/70 p-4">
-        <div class="text-xs font-medium text-amber-300">NO_FACE 记录数</div>
-        <div id="noFaceCount" class="mt-2 text-2xl font-semibold text-amber-300">-</div>
-      </div>
-    </section>
-
-    <!-- 每周 / 每月 签到人数折线图 -->
-    <section class="grid gap-4 lg:grid-cols-2">
-      <!-- 每周签到人数 -->
-      <div class="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 md:p-5">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-sm font-medium text-slate-100">
-            每周签到人数（按天去重后，每天人数再按周汇总）
-          </h2>
-        </div>
-        <div class="relative h-64 md:h-72">
-          <canvas id="weeklySignChart"></canvas>
-        </div>
-        <p class="mt-2 text-[11px] text-slate-500">
-          以周一为一周的开始，将每天有效访客人数（同一人同一天只算一次）按周汇总。
-        </p>
-      </div>
-
-      <!-- 每月签到人数 -->
-      <div class="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 md:p-5">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-sm font-medium text-slate-100">
-            每月签到人数（按天去重后，每天人数再按月汇总）
-          </h2>
-        </div>
-        <div class="relative h-64 md:h-72">
-          <canvas id="monthlySignChart"></canvas>
-        </div>
-        <p class="mt-2 text-[11px] text-slate-500">
-          将每天有效访客人数按所在月份汇总，横轴为月份（YYYY-MM）。
-        </p>
-      </div>
-    </section>
-
-    <!-- 某周签到人员表格 -->
-    <section class="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 md:p-5">
-      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+    <!-- 某周签到人员表格（仅此保留） -->
+    <section class="rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 p-4 md:p-5 border-b border-slate-200">
         <div>
-          <h2 class="text-sm font-medium text-slate-100">
-            某周签到人员表格
-          </h2>
-          <p class="mt-1 text-[11px] text-slate-500">
-            左侧为人员姓名（来自 <code>label_map.json</code>），表头为周一至周日，单元格使用 ✓ 表示当天有签到（同一人同一天只算一次）。
+          <h2 class="text-base font-semibold text-slate-900">某周签到人员表格</h2>
+          <p class="mt-1 text-xs text-slate-600">
+            表头为周一至周日；单元格显示 ✓ 表示当天已签到（按天去重）。
           </p>
         </div>
+
         <div class="flex items-center gap-2">
-          <label for="weekSelect" class="text-xs text-slate-400 whitespace-nowrap">
-            选择周：
-          </label>
+          <label for="weekSelect" class="text-sm text-slate-700 whitespace-nowrap">选择周：</label>
           <select
             id="weekSelect"
-            class="text-xs md:text-sm rounded-xl border border-slate-700 bg-slate-900/80 px-3 py-1.5 focus:border-sky-500/70 outline-none min-w-[200px]">
+            class="text-sm rounded-xl border border-slate-300 bg-white px-3 py-2 focus:border-slate-900 outline-none min-w-[220px]">
             <option value="">暂无周数据</option>
           </select>
         </div>
       </div>
 
-      <div class="overflow-x-auto border border-slate-800 rounded-2xl">
+      <div class="overflow-x-auto">
         <table class="min-w-full text-sm">
-          <thead class="bg-slate-900/80 border-b border-slate-800 text-slate-300">
+          <thead class="bg-slate-100 text-slate-700 border-b border-slate-200">
             <tr>
-              <th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide">姓名</th>
-              <th class="px-3 py-2 text-center text-xs font-medium uppercase tracking-wide">周一</th>
-              <th class="px-3 py-2 text-center text-xs font-medium uppercase tracking-wide">周二</th>
-              <th class="px-3 py-2 text-center text-xs font-medium uppercase tracking-wide">周三</th>
-              <th class="px-3 py-2 text-center text-xs font-medium uppercase tracking-wide">周四</th>
-              <th class="px-3 py-2 text-center text-xs font-medium uppercase tracking-wide">周五</th>
-              <th class="px-3 py-2 text-center text-xs font-medium uppercase tracking-wide">周六</th>
-              <th class="px-3 py-2 text-center text-xs font-medium uppercase tracking-wide">周日</th>
+              <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide">姓名</th>
+              <th class="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wide">周一</th>
+              <th class="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wide">周二</th>
+              <th class="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wide">周三</th>
+              <th class="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wide">周四</th>
+              <th class="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wide">周五</th>
+              <th class="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wide">周六</th>
+              <th class="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wide">周日</th>
             </tr>
           </thead>
-          <tbody id="weekTableBody" class="divide-y divide-slate-800">
+          <tbody id="weekTableBody" class="divide-y divide-slate-200">
             <!-- JS 动态填充 -->
           </tbody>
         </table>
       </div>
-    </section>
 
-    <!-- 最近签到记录（精简版日志，不显示图片路径） -->
-    <section class="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 md:p-5">
-      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
-        <h2 class="text-sm font-medium text-slate-100">
-          最近签到记录（简要）
-        </h2>
-        <div class="flex flex-col sm:flex-row gap-2 sm:items-center">
-          <div class="flex-1">
-            <label class="block text-xs font-medium text-slate-400 mb-1">
-              搜索（姓名 / 状态）
-            </label>
-            <div
-              class="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2 focus-within:border-sky-500/70">
-              <span class="text-slate-500 text-sm">🔍</span>
-              <input
-                id="searchInput"
-                type="text"
-                placeholder="例如：张三 / MATCH / ERROR / NO_FACE"
-                class="w-full bg-transparent outline-none text-sm placeholder:text-slate-500" />
-            </div>
-          </div>
-          <div class="w-full sm:w-44">
-            <label class="block text-xs font-medium text-slate-400 mb-1">
-              状态筛选
-            </label>
-            <select
-              id="statusFilter"
-              class="w-full text-sm rounded-xl border border-slate-700 bg-slate-900/80 px-3 py-2 focus:border-sky-500/70 outline-none">
-              <option value="">全部状态</option>
-              <option value="MATCH">MATCH</option>
-              <option value="ERROR">ERROR</option>
-              <option value="NO_FACE">NO_FACE</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <div class="overflow-x-auto border border-slate-800 rounded-2xl">
-        <table class="min-w-full text-sm">
-          <thead class="bg-slate-900/80 border-b border-slate-800 text-slate-300">
-            <tr>
-              <th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide">时间</th>
-              <th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide">姓名</th>
-              <th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide">状态</th>
-            </tr>
-          </thead>
-          <tbody id="tableBody" class="divide-y divide-slate-800"></tbody>
-        </table>
-      </div>
-
-      <!-- 分页 -->
-      <div
-        class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mt-4 text-xs text-slate-400">
-        <div id="summary">正在加载...</div>
-        <div class="flex items-center gap-2">
-          <button
-            id="prevPage"
-            class="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-900/70 disabled:opacity-40 text-xs">
-            上一页
-          </button>
-          <button
-            id="nextPage"
-            class="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-900/70 disabled:opacity-40 text-xs">
-            下一页
-          </button>
-        </div>
+      <div class="p-4 md:p-5 text-xs text-slate-600">
+        <span id="hint">加载中…</span>
       </div>
     </section>
   </div>
-
-  <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <!-- 业务逻辑 JS -->
   <script src="app.js"></script>
