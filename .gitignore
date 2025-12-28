@@ -5,3 +5,4 @@ __pycache__/
 inspireface-cache/
 main
 models/
+web/static/node_modules/
