@@ -4,8 +4,8 @@ Pi-Face 是一个基于 **InspireFace**
 的人脸识别签到小系统，搭配海康摄像头使用，提供：
 
 - 实时人脸识别与签到记录\
-- 抓拍图片落盘 + CSV 日志\
-- 一个简单的 Web 看板查看记录和统计
+- CSV 日志\
+- 简单的 Web 看板查看记录和统计
 
 > 人脸识别核心来自：[https://github.com/HyperInspire/InspireFace](https://github.com/HyperInspire/InspireFace)
 
@@ -18,11 +18,10 @@ Pi-Face 是一个基于 **InspireFace**
      日志
    - `build_feature_db.py`：从已知人脸目录构建/增量更新特征库
 2. **Go Web 服务（web）**
-   - `web/main.go`：读取 CSV 日志文件，提供 JSON API 和静态页面
-   - `web/static/index.html`：Tailwind + Chart.js 的前端看板
+   - `web/main.go`：读取 CSV 日志文件，提供静态页面
+   - `web/static/index.html`：Tailwind前端看板
 3. **Docker**
-   - `dockerfile`：多阶段构建 Go + Python
-   - `entrypoint.sh`：同时启动三个服务
+   - `dockerfile`：一次性启动
 
 
 ## 2. Python 端
@@ -52,13 +51,10 @@ Pi-Face 是一个基于 **InspireFace**
 ### 3.1 API
 
 - `/api/records`（搜索、筛选、分页、时间倒序）
-- `/api/stats`基于 MATCH 统计：
-  - 每周签到人员的表格
 - `/image?path=...` 访问抓拍图片（带路径安全检查）
 
 ### 3.2 前端
 
-Tailwind + Chart.js，无需构建。
 包含图表、统计面板、记录表格、详情弹窗。
 
 ## 4. 使用方法
