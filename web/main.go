@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"embed"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net"
 	"net/http"
@@ -67,13 +69,15 @@ type StatsResponse struct {
 	LabelMap     map[string]string `json:"label_map"`         // ID -> 姓名，对应 label_map.json
 }
 
+//go:embed static/index.html static/app.js static/tailwind.css
+var embeddedStatic embed.FS
+
 var (
 	dataDir      string // data 目录根（相对路径），默认 ../data
 	csvPath      string // 日志 CSV 文件路径（相对路径），默认 dataDir/logs/records.csv
 	labelMapPath string // label_map.json 路径，默认 dataDir/feature_db/label_map.json
-	staticDir    string // 前端静态资源目录，默认 ./static
+	staticDir    string // 可选：外部前端静态资源目录；为空时使用内嵌资源
 )
-
 
 // 格式：YYYY-MM-DD HH:MM:SS [INFO] message
 var logFile *os.File
@@ -197,23 +201,33 @@ func main() {
 		labelMapPath = filepath.Join(dataDir, "feature_db", "label_map.json")
 	}
 
-	staticDir = os.Getenv("STATIC_DIR")
-	if staticDir == "" {
-		staticDir = "./static"
-	}
+	staticDir = strings.TrimSpace(os.Getenv("STATIC_DIR"))
 
 	logSep()
 	logInfof("使用 data 目录: %s", dataDir)
 	logInfof("使用 CSV 日志: %s", csvPath)
 	logInfof("使用 label_map: %s", labelMapPath)
-	logInfof("使用静态目录: %s", staticDir)
+	if staticDir != "" {
+		logInfof("使用外部静态目录: %s", staticDir)
+	} else {
+		logInfo("使用内嵌静态资源: static/index.html, static/app.js, static/tailwind.css")
+	}
 	logSep()
 
 	mux := http.NewServeMux()
 
-	// 前端静态文件
-	fs := http.FileServer(http.Dir(staticDir))
-	mux.Handle("/", fs)
+	// 前端静态文件：默认使用 go:embed；如设置 STATIC_DIR，则优先读取外部目录，方便本地调试。
+	var staticHandler http.Handler
+	if staticDir != "" {
+		staticHandler = http.FileServer(http.Dir(staticDir))
+	} else {
+		subFS, err := fs.Sub(embeddedStatic, "static")
+		if err != nil {
+			log.Fatalf("创建内嵌静态文件系统失败: %v", err)
+		}
+		staticHandler = http.FileServer(http.FS(subFS))
+	}
+	mux.Handle("/", staticHandler)
 
 	// API
 	mux.HandleFunc("/api/records", handleRecords)
