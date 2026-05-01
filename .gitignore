@@ -1,6 +1,3 @@
-data/
-# InspireFace/
-# build*/
-build-arch/
-test.jpg
-build/
+InspireFace/
+build*/
+.env

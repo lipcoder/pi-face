@@ -1,30 +1,18 @@
-package tools
+package inspireface
 
 import (
 	"bytes"
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"mime/multipart"
 	"net/http"
-	"net/url"
+
+	"lipcoder/face/internal/config"
 )
 
-type Face struct {
-	logger *Logger
+type Inspire struct {
 	client *http.Client
-}
-
-func NewFace(client *http.Client, Logger *slog.Logger) *Face {
-	if client == nil {
-		client = http.DefaultClient
-	}
-
-	return &Face{
-		logger: NewLogger(Logger),
-		client: client,
-	}
 }
 
 var (
@@ -33,16 +21,17 @@ var (
 	ErrPostImageResponse = errors.New("post image response failed")
 )
 
-func (image *Face) GetFace(posturl string, imgBytes []byte) []byte {
-	respBody, err := image.PostImage(posturl, imgBytes)
-	if err != nil {
-		image.handlePostImageError(err)
-		return nil
+func NewInspire(client *http.Client) *Inspire {
+	if client == nil {
+		client = http.DefaultClient
 	}
 
-	return respBody
+	return &Inspire{
+		client: client,
+	}
 }
-func (face *Face) PostImage(posturl string, imgBytes []byte) ([]byte, error) {
+
+func (ins *Inspire) PostImage(imgBytes []byte) ([]byte, error) {
 	var body bytes.Buffer
 
 	writer := multipart.NewWriter(&body)
@@ -60,14 +49,16 @@ func (face *Face) PostImage(posturl string, imgBytes []byte) ([]byte, error) {
 		return nil, fmt.Errorf("%w: close multipart writer failed: %w", ErrBuildImageRequest, err)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, posturl, &body)
+	con := config.Load()
+
+	req, err := http.NewRequest(http.MethodPost, con.InspireFaceHost, &body)
 	if err != nil {
 		return nil, fmt.Errorf("%w: create request failed: %w", ErrBuildImageRequest, err)
 	}
 
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
-	resp, err := face.client.Do(req)
+	resp, err := ins.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("%w: do request failed: %w", ErrPostImageRequest, err)
 	}
@@ -88,34 +79,4 @@ func (face *Face) PostImage(posturl string, imgBytes []byte) ([]byte, error) {
 	}
 
 	return respBody, nil
-}
-
-func (face *Face) handlePostImageError(err error) {
-	var urlErr *url.Error
-
-	switch {
-	case errors.As(err, &urlErr):
-		face.logger.Error(
-			"post image http request failed",
-			"op", urlErr.Op,
-			"url", urlErr.URL,
-			"err", urlErr.Err,
-		)
-
-		if urlErr.Timeout() {
-			face.logger.Error("post image request timeout", "err", err)
-		}
-
-	case errors.Is(err, ErrBuildImageRequest):
-		face.logger.Error("build image request failed", "err", err)
-
-	case errors.Is(err, ErrPostImageRequest):
-		face.logger.Error("post image request failed", "err", err)
-
-	case errors.Is(err, ErrPostImageResponse):
-		face.logger.Error("post image response failed", "err", err)
-
-	default:
-		face.logger.Error("post image failed", "err", err)
-	}
 }
