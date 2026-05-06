@@ -1,4 +1,4 @@
-package json
+package inspireface
 
 import (
 	"encoding/json"
@@ -6,12 +6,12 @@ import (
 )
 
 type Response struct {
-	Decoder                    string       `json:"decoder"`                      // 图片解码器，例如 opencv，表示图片是通过什么方式读取/解码的
+	Decoder                    string       `json:"decoder"`                      // 图片解码器，例如 opencv
 	FaceCount                  int          `json:"face_count"`                   // 检测到的人脸数量
 	Faces                      []FaceResult `json:"faces"`                        // 检测到的人脸结果列表，每个人脸对应一个 FaceResult
 	Image                      ImageInfo    `json:"image"`                        // 原始图片信息，包括宽、高、通道数
-	OK                         bool         `json:"ok"`                           // 本次人脸解析是否成功，true 表示成功
-	RecommendedCosineThreshold float64      `json:"recommended_cosine_threshold"` // 推荐的余弦相似度阈值，用于判断两个人脸是否为同一个人
+	OK                         bool         `json:"ok"`                           // 本次人脸解析是否成功
+	RecommendedCosineThreshold float64      `json:"recommended_cosine_threshold"` // 推荐的余弦相似度阈值
 }
 
 type FaceResult struct {
@@ -37,7 +37,7 @@ type ImageInfo struct {
 	Width    int `json:"width"`    // 图片宽度，单位是像素
 }
 
-func BytesToResponse(respBody []byte) (*Response, error) {
+func BytesFromResponse(respBody []byte) (*Response, error) {
 	var result Response
 	if err := json.Unmarshal(respBody, &result); err != nil {
 		return nil, fmt.Errorf("parse extract-best response failed %w", err)
@@ -45,10 +45,18 @@ func BytesToResponse(respBody []byte) (*Response, error) {
 	return &result, nil
 }
 
-func GetBestFaceEmbedding(respBody []byte)([]float64,error){
-	response ,err:= BytesToResponse(respBody)
-	if err!= nil{
-		return nil,err
+func (a Inspire) GetFaceEmbedding(respBody []byte, rank int) ([]float64, error) {
+	response, err := BytesFromResponse(respBody)
+	if err != nil {
+		return nil, err
 	}
-	return response.Faces[0].Embedding,nil
+	return response.Faces[rank].Embedding, nil
+}
+
+func (a Inspire) GetFaceCount(respBody []byte) (int, error) {
+	response, err := BytesFromResponse(respBody)
+	if err != nil {
+		return 0, err
+	}
+	return response.FaceCount, nil
 }

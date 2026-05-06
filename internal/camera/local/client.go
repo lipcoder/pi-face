@@ -1,31 +1,39 @@
 package local
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
 	"gocv.io/x/gocv"
 )
 
-type Local struct{}
+type Local int
 
-func (local *Local)Capture() ([]byte, error) {
-	imageBytes, err := getLocalImage()
+var (
+	ErrNilCamera = errors.New("camera failed")
+	ErrNilImages = errors.New("images failed")
+)
+
+func (a Local) Capture() ([]byte, error) {
+	imageBytes, err := a.getLocalImage()
 	if err != nil {
 		return nil, fmt.Errorf("capture local image: %w", err)
 	}
+
 	return imageBytes, nil
 }
 
-func getLocalImage() ([]byte, error) {
-	webcam, err := gocv.OpenVideoCapture(0)
+// 获取本地摄像头的照片
+func (a Local) getLocalImage() ([]byte, error) {
+	webcam, err := gocv.OpenVideoCapture(a)
 	if err != nil {
-		return nil, fmt.Errorf("打开摄像头失败: %w", err)
+		return nil, fmt.Errorf("%w Open local camera failed %w", ErrNilCamera, err)
 	}
 	defer webcam.Close()
 
 	if !webcam.IsOpened() {
-		return nil, fmt.Errorf("摄像头未打开")
+		return nil, ErrNilCamera
 	}
 
 	img := gocv.NewMat()
@@ -43,12 +51,12 @@ func getLocalImage() ([]byte, error) {
 	}
 
 	if !ok {
-		return nil, fmt.Errorf("未能从摄像头读取到图像")
+		return nil, ErrNilCamera
 	}
 
 	buf, err := gocv.IMEncode(".jpg", img)
 	if err != nil {
-		return nil, fmt.Errorf("编码 JPG 失败: %w", err)
+		return nil, fmt.Errorf("%w Encoding JPG failed %w", ErrNilImages, err)
 	}
 	defer buf.Close()
 
@@ -56,9 +64,8 @@ func getLocalImage() ([]byte, error) {
 	copy(imageBytes, buf.GetBytes())
 
 	if len(imageBytes) == 0 {
-		return nil, fmt.Errorf("JPG 图片为空")
+		return nil, ErrNilImages
 	}
 
 	return imageBytes, nil
-
 }

@@ -21,17 +21,7 @@ var (
 	ErrPostImageResponse = errors.New("post image response failed")
 )
 
-func NewInspire(client *http.Client) *Inspire {
-	if client == nil {
-		client = http.DefaultClient
-	}
-
-	return &Inspire{
-		client: client,
-	}
-}
-
-func (ins *Inspire) PostImage(imgBytes []byte) ([]byte, error) {
+func (a Inspire)PostImage(imgBytes []byte) ([]byte, error) {
 	var body bytes.Buffer
 
 	writer := multipart.NewWriter(&body)
@@ -58,7 +48,7 @@ func (ins *Inspire) PostImage(imgBytes []byte) ([]byte, error) {
 
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
-	resp, err := ins.client.Do(req)
+	resp, err := a.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("%w: do request failed: %w", ErrPostImageRequest, err)
 	}

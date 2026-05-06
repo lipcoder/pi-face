@@ -14,19 +14,21 @@ type Hik struct {
 }
 
 func NewHik(client *http.Client) *Hik {
-	if client == nil {
-		client = http.DefaultClient
-	}
-
 	return &Hik{
 		client: client,
 	}
 }
 
-func (hik *Hik) Capture() ([]byte, error) {
+var (
+	ErrUrl     = errors.New("url failed")
+	ErrRequest = errors.New("request failed")
+	ErrImage   = errors.New("image failed")
+)
+
+func (a *Hik) Capture() ([]byte, error) {
 	con := config.Load()
 
-	imageBytes, err := hik.getWebImage(con.HikvisionHost, con.HikvisionUsername, con.HikvisionPassword)
+	imageBytes, err := a.getWebImage(con.HikvisionHost, con.HikvisionUsername, con.HikvisionPassword)
 	if err != nil {
 		return nil, fmt.Errorf("capture hikvision image: %w", err)
 	}
@@ -34,28 +36,22 @@ func (hik *Hik) Capture() ([]byte, error) {
 	return imageBytes, nil
 }
 
-var (
-	ErrImage   = errors.New("image")
-	ErrRequest = errors.New("request")
-)
-
-func (hik *Hik) getWebImage(URL, username, passwd string) ([]byte, error) {
+func (a *Hik) getWebImage(URL, username, passwd string) ([]byte, error) {
 	req, err := http.NewRequest(http.MethodGet, URL, nil)
-	// *url.Error，URL格式错误
 	if err != nil {
-		return nil, fmt.Errorf("create request failed: %w", err)
+		return nil, fmt.Errorf("%w create request failed: %w", ErrUrl, err)
 	}
+
 	req.SetBasicAuth(username, passwd)
-	// *url.Error，如果同时为请求超时则有两条日志
-	resp, err := hik.client.Do(req)
+
+	resp, err := a.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("send request failed: %w", err)
+		return nil, fmt.Errorf("%w send request failed: %w", ErrRequest, err)
 	}
 	defer resp.Body.Close()
 
 	contentType := resp.Header.Get("Content-Type")
 
-	// ErrRequest
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 
