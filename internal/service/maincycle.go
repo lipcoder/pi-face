@@ -98,7 +98,7 @@ func ExtractBestEmbeddingFromCamera(
 	default:
 	}
 
-	embedding, err := rec.GetFaceEmbedding(imageBytes, 0)
+	embedding, err := rec.GetFaceEmbedding(imageBytes, 1)
 	if err != nil {
 		return nil, fmt.Errorf("get embedding from inspireface response: %w", err)
 	} else if embedding == nil {
