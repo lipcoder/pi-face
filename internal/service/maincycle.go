@@ -24,7 +24,6 @@ func SignIn(
 	interval time.Duration,
 	similarity float64,
 	quality float64,
-	// onMatched AttendanceHandler,
 ) error {
 	if cam == nil {
 		return fmt.Errorf("camera cannot be nil")
@@ -102,8 +101,8 @@ func ExtractBestEmbeddingFromCamera(
 	embedding, err := rec.GetFaceEmbedding(imageBytes, 0)
 	if err != nil {
 		return nil, fmt.Errorf("get embedding from inspireface response: %w", err)
-	}else if embedding == nil{
-		return nil,nil
+	} else if embedding == nil {
+		return nil, nil
 	}
 
 	return embedding[0], nil

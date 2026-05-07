@@ -34,6 +34,18 @@ func (a Inspire) GetFaceEmbedding(imageBytes []byte, rank int) ([][]float64, err
 		}
 
 		return embeddings, nil
+	case 0:
+		// 只允许图片里有一张脸
+		if len(response.Faces) != 1 {
+			return nil, fmt.Errorf("expected one face, got %d faces", len(response.Faces))
+		}
+
+		embedding := response.Faces[0].Embedding
+		if len(embedding) == 0 {
+			return nil, errors.New("face embedding is empty")
+		}
+
+		return [][]float64{embedding}, nil
 	case 1:
 		// 返回质量最高的一张脸
 		bestFace := response.Faces[0]
