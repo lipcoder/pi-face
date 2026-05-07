@@ -45,7 +45,7 @@ func BytesFromResponse(respBody []byte) (*Response, error) {
 	return &result, nil
 }
 
-func (a Inspire) GetFaceEmbedding(respBody []byte, rank int) ([]float64, error) {
+func GetEmbedding(respBody []byte, rank int) ([]float64, error) {
 	response, err := BytesFromResponse(respBody)
 	if err != nil {
 		return nil, err
@@ -53,7 +53,7 @@ func (a Inspire) GetFaceEmbedding(respBody []byte, rank int) ([]float64, error) 
 	return response.Faces[rank].Embedding, nil
 }
 
-func (a Inspire) GetFaceCount(respBody []byte) (int, error) {
+func GetFaceCount(respBody []byte) (int, error) {
 	response, err := BytesFromResponse(respBody)
 	if err != nil {
 		return 0, err

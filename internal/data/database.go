@@ -222,7 +222,7 @@ func SearchFaceByEmbedding(
 	)
 
 	if err == sql.ErrNoRows {
-		return "", 0, nil
+		return "", 0, ErrNotFound
 	}
 
 	if err != nil {
