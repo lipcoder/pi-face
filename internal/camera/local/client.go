@@ -15,6 +15,8 @@ var (
 	ErrNilImages = errors.New("images failed")
 )
 
+func NewLocalCamera(a int) (*Local, error)
+
 func (a Local) Capture() ([]byte, error) {
 	imageBytes, err := a.getLocalImage()
 	if err != nil {

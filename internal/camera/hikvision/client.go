@@ -1,22 +1,50 @@
 package hikvision
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
-
-	"lipcoder/face/internal/config"
+	"time"
 )
 
 type Hik struct {
 	client *http.Client
+	Config
 }
 
-func NewHik(client *http.Client) *Hik {
+type Config struct {
+	Host     string
+	Username string
+	Password string
+}
+
+func NewHik(cfg Config, client *http.Client) (*Hik, error) {
+	if cfg.Host == "" {
+		return nil, errors.New("hikvision host cannot be empty")
+	}
+	if cfg.Username == "" {
+		return nil, errors.New("hikvision username cannot be empty")
+	}
+	if cfg.Password == "" {
+		return nil, errors.New("hikvision password cannot be empty")
+	}
+
+	if client == nil {
+		client = &http.Client{
+			Timeout: 5 * time.Second,
+		}
+	} else if client.Timeout == 0 {
+		copied := *client
+		copied.Timeout = 5 * time.Second
+		client = &copied
+	}
+
 	return &Hik{
 		client: client,
-	}
+		Config: cfg,
+	}, nil
 }
 
 var (
@@ -25,10 +53,10 @@ var (
 	ErrImage   = errors.New("image failed")
 )
 
-func (a *Hik) Capture() ([]byte, error) {
-	con := config.Load()
+func (a *Hik) Capture(context context.Context) ([]byte, error) {
+	con := a.Config
 
-	imageBytes, err := a.getWebImage(con.HikvisionHost, con.HikvisionUsername, con.HikvisionPassword)
+	imageBytes, err := a.getWebImage(con.Host, con.Username, con.Password)
 	if err != nil {
 		return nil, fmt.Errorf("capture hikvision image: %w", err)
 	}
@@ -70,10 +98,24 @@ func (a *Hik) getWebImage(URL, username, passwd string) ([]byte, error) {
 		return nil, fmt.Errorf("%w: read body failed: %w", ErrImage, err)
 	}
 
-	// ErrImage
-	if len(imageBytes) == 0 {
-		return nil, fmt.Errorf("%w: image is empty", ErrImage)
+	if err = validateImageBytes(imageBytes); err != nil {
+		return nil, fmt.Errorf("%w:%w", ErrImage, err)
 	}
 
 	return imageBytes, nil
+}
+
+func validateImageBytes(body []byte) error {
+	if len(body) == 0 {
+		return errors.New("empty image body")
+	}
+
+	contentType := http.DetectContentType(body)
+
+	switch contentType {
+	case "image/jpeg":
+		return nil
+	default:
+		return fmt.Errorf("invalid image content type: %s", contentType)
+	}
 }
