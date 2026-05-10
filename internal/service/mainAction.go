@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"lipcoder/face/internal/camera"
+	"lipcoder/face/internal/data"
 	"lipcoder/face/internal/recognition"
 	"strings"
 )
@@ -27,6 +28,7 @@ func StartAdminLoop(
 	ctx context.Context,
 	reqCh <-chan AdminRequest,
 	addFaceSem chan struct{},
+	facedb data.Facedb,
 ) error {
 	for {
 		select {
@@ -46,10 +48,10 @@ func StartAdminLoop(
 
 			switch req.action {
 			case "add":
-				go handleAddFaceRequest(ctx, req, addFaceSem)
+				go handleAddFaceRequest(ctx, req, facedb, addFaceSem)
 
 			case "delete":
-				exists, err := DeleteFace(ctx, req.name)
+				exists, err := DeleteFace(ctx, req.name, facedb)
 				sendAdminResult(ctx, req.Reply, AdminResult{
 					name:   req.name,
 					action: req.action,
@@ -58,7 +60,7 @@ func StartAdminLoop(
 				})
 
 			case "search":
-				exists, err := QueryFace(ctx, req.name)
+				exists, err := QueryFace(ctx, req.name, facedb)
 				sendAdminResult(ctx, req.Reply, AdminResult{
 					name:   req.name,
 					action: req.action,
@@ -74,6 +76,7 @@ func StartAdminLoop(
 func handleAddFaceRequest(
 	ctx context.Context,
 	req AdminRequest,
+	facedb data.Facedb,
 	addFaceSem chan struct{},
 ) {
 	select {
@@ -89,7 +92,7 @@ func handleAddFaceRequest(
 			<-addFaceSem
 		}()
 	}
-	_, err := AddFaceFromCamera(ctx, req.name, req.cam, req.rec)
+	_, err := AddFaceFromCamera(ctx, req.name, req.cam, facedb, req.rec)
 	sendAdminResult(ctx, req.Reply, AdminResult{
 		name:   req.name,
 		action: req.action,

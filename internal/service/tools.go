@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"lipcoder/face/internal/camera"
-	facedb "lipcoder/face/internal/data"
+	"lipcoder/face/internal/data"
 	"lipcoder/face/internal/recognition"
 )
 
@@ -12,9 +12,10 @@ func AddFaceFromCamera(
 	ctx context.Context,
 	name string,
 	cam camera.Camera,
+	facedb data.Facedb,
 	rec recognition.Recognition,
 ) (int64, error) {
-	exists, err := QueryFace(ctx, name)
+	exists, err := QueryFace(ctx, name,facedb)
 	if err != nil {
 		return 0, fmt.Errorf("add face false %w", err)
 	}
@@ -45,9 +46,7 @@ func AddFaceFromCamera(
 		return 0, fmt.Errorf("chect face counts %w", err)
 	}
 
-	embeddingText := rec.EmbeddingToPGVector(embedding[0])
-
-	id, err := facedb.AddFace(ctx, name, embeddingText)
+	id, err := facedb.AddFace(ctx, name, embedding[0])
 	if err != nil {
 		return 0, fmt.Errorf("add face to database: %w", err)
 	}
@@ -58,8 +57,9 @@ func AddFaceFromCamera(
 func DeleteFace(
 	ctx context.Context,
 	name string,
+	facedb data.Facedb,
 ) (bool, error) {
-	exists, err := QueryFace(ctx, name)
+	exists, err := QueryFace(ctx, name,facedb)
 	if err != nil {
 		return false, fmt.Errorf("delete face false %w", err)
 	}
@@ -76,6 +76,7 @@ func DeleteFace(
 func QueryFace(
 	ctx context.Context,
 	name string,
+	facedb data.Facedb,
 ) (bool, error) {
 	exists, err := facedb.FaceExistsByName(ctx, name)
 	if err != nil {

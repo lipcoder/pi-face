@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"lipcoder/face/internal/camera"
-	facedb "lipcoder/face/internal/data"
+	"lipcoder/face/internal/data"
 	"lipcoder/face/internal/recognition"
 	"time"
 )
@@ -21,9 +21,9 @@ func SignIn(
 	ctx context.Context,
 	cam camera.Camera,
 	rec recognition.Recognition,
+	facedb data.Facedb,
 	interval time.Duration,
 	similarity float64,
-	quality float64,
 ) error {
 	if cam == nil {
 		return fmt.Errorf("camera cannot be nil")
@@ -38,9 +38,6 @@ func SignIn(
 
 	if similarity <= 0 {
 		similarity = DefaultFaceSimilarity
-	}
-	if quality <= 0 {
-		quality = DefaultFaceSimilarity
 	}
 
 	ticker := time.NewTicker(interval)
@@ -58,14 +55,14 @@ func SignIn(
 			} else if bestembedding == nil {
 				continue
 			}
-			embeddingText := rec.EmbeddingToPGVector(bestembedding)
 
-			name, facesimilarity, err := facedb.SearchFaceByEmbedding(ctx, embeddingText, similarity)
+			name, facesimilarity, err := facedb.SearchFaceByEmbedding(ctx, bestembedding, similarity)
 			if err != nil {
-				if !errors.Is(err, facedb.ErrNotFound) {
+				if !errors.Is(err, data.ErrNotFound) {
+					continue
+				} else {
 					return fmt.Errorf("attendance search face failed %w", err)
 				}
-				continue
 			}
 
 			err = RecordFaceSimilarity(name, facesimilarity)
@@ -103,6 +100,8 @@ func ExtractBestEmbeddingFromCamera(
 		return nil, fmt.Errorf("get embedding from inspireface response: %w", err)
 	} else if embedding == nil {
 		return nil, nil
+	}else if len(embedding)==0 {
+		return nil,nil
 	}
 
 	return embedding[0], nil
