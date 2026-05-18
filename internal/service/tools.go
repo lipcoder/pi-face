@@ -15,19 +15,6 @@ func AddFaceFromCamera(
 	facedb data.Facedb,
 	rec recognition.Recognition,
 ) (int64, error) {
-	exists, err := QueryFace(ctx, name,facedb)
-	if err != nil {
-		return 0, fmt.Errorf("add face false %w", err)
-	}
-	if exists {
-		return 0, nil
-	}
-	select {
-	case <-ctx.Done():
-		return 0, ctx.Err()
-	default:
-	}
-
 	imageBytes, err := cam.Capture()
 	if err != nil {
 		return 0, fmt.Errorf("mainAction get image failed,%w", err)
@@ -52,25 +39,6 @@ func AddFaceFromCamera(
 	}
 
 	return id, nil
-}
-
-func DeleteFace(
-	ctx context.Context,
-	name string,
-	facedb data.Facedb,
-) (bool, error) {
-	exists, err := QueryFace(ctx, name,facedb)
-	if err != nil {
-		return false, fmt.Errorf("delete face false %w", err)
-	}
-	if !exists {
-		return false, nil
-	}
-
-	if err := facedb.DeleteFaceByName(ctx, name); err != nil {
-		return false, fmt.Errorf("delete face by name: %w", err)
-	}
-	return true, nil
 }
 
 func QueryFace(

@@ -31,6 +31,9 @@ func SignIn(
 	if rec == nil {
 		return fmt.Errorf("recognition cannot be nil")
 	}
+	if facedb == nil {
+		return fmt.Errorf("facedb cannot be nil")
+	}
 
 	if interval <= 0 {
 		interval = DefaultFaceInterval
@@ -49,20 +52,23 @@ func SignIn(
 			return ctx.Err()
 
 		case <-ticker.C:
-			bestembedding, err := ExtractBestEmbeddingFromCamera(ctx, cam, rec)
-			if err != nil {
-				return fmt.Errorf("attendance extract embedding failed %w", err)
-			} else if bestembedding == nil {
+			bestembedding, err := extractBestEmbeddingFromCamera(ctx, cam, rec)
+			if err == recognition.ErrNoFace {
 				continue
+			}
+			if err == recognition.ErrNoFaceEmbedding {
+				continue
+			}
+			if err != nil {
+				return err
 			}
 
 			name, facesimilarity, err := facedb.SearchFaceByEmbedding(ctx, bestembedding, similarity)
 			if err != nil {
-				if !errors.Is(err, data.ErrNotFound) {
+				if errors.Is(err, data.ErrNotFound) {
 					continue
-				} else {
-					return fmt.Errorf("attendance search face failed %w", err)
 				}
+				return fmt.Errorf("attendance search face failed %w", err)
 			}
 
 			err = RecordFaceSimilarity(name, facesimilarity)
@@ -73,7 +79,7 @@ func SignIn(
 	}
 }
 
-func ExtractBestEmbeddingFromCamera(
+func extractBestEmbeddingFromCamera(
 	ctx context.Context,
 	cam camera.Camera,
 	rec recognition.Recognition,
@@ -96,12 +102,8 @@ func ExtractBestEmbeddingFromCamera(
 	}
 
 	embedding, err := rec.GetFaceEmbedding(imageBytes, 1)
-	if err != nil {
-		return nil, fmt.Errorf("get embedding from inspireface response: %w", err)
-	} else if embedding == nil {
-		return nil, nil
-	}else if len(embedding)==0 {
-		return nil,nil
+	if embedding == nil {
+		return nil, err
 	}
 
 	return embedding[0], nil

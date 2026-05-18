@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"lipcoder/face/internal/camera"
 	"lipcoder/face/internal/data"
 	"lipcoder/face/internal/recognition"
@@ -40,33 +41,73 @@ func StartAdminLoop(
 			}
 			req.name = strings.TrimSpace(req.name)
 			if req.name == "" {
-				return errors.New("name cannot be empty")
+				sendAdminResult(ctx, req.Reply, AdminResult{
+					name:   req.name,
+					action: req.action,
+					exists: false,
+					err:    errors.New("no name"),
+				})
 			}
-			if req.cam == nil {
-				return errors.New("camera cannot be nil")
+			if req.rec == nil {
+				sendAdminResult(ctx, req.Reply, AdminResult{
+					name:   req.name,
+					action: req.action,
+					exists: false,
+					err:    errors.New("Recognition cannot be nil"),
+				})
 			}
 
 			switch req.action {
 			case "add":
+				if req.cam == nil {
+					sendAdminResult(ctx, req.Reply, AdminResult{
+						name:   req.name,
+						action: req.action,
+						exists: false,
+						err:    errors.New("camera cannot be nil"),
+					})
+				}
 				go handleAddFaceRequest(ctx, req, facedb, addFaceSem)
 
 			case "delete":
-				exists, err := DeleteFace(ctx, req.name, facedb)
+				if err := facedb.DeleteFaceByName(ctx, req.name); err != nil {
+					sendAdminResult(ctx, req.Reply, AdminResult{
+						name:   req.name,
+						action: req.action,
+						exists: false,
+						err:    err,
+					})
+				}
 				sendAdminResult(ctx, req.Reply, AdminResult{
 					name:   req.name,
 					action: req.action,
-					exists: exists,
-					err:    err,
+					exists: true,
+					err:    nil,
 				})
 
 			case "search":
-				exists, err := QueryFace(ctx, req.name, facedb)
+				exists, err := facedb.FaceExistsByName(ctx, req.name)
+				if err != nil {
+					sendAdminResult(ctx, req.Reply, AdminResult{
+						name:   req.name,
+						action: req.action,
+						exists: exists,
+						err:    err,
+					})
+				}
 				sendAdminResult(ctx, req.Reply, AdminResult{
 					name:   req.name,
 					action: req.action,
 					exists: exists,
-					err:    err,
+					err:    nil,
 				})
+			default:
+				sendAdminResult(ctx, req.Reply, AdminResult{
+					name:   req.name,
+					action: req.action,
+					err:    fmt.Errorf("unknown admin action: %s", req.action),
+				})
+				continue
 			}
 		}
 	}
